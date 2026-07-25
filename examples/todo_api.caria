@@ -1,0 +1,53 @@
+// Calesteria Phase 3 Demo: Todo CRUD API
+// Runs on Hono + better-sqlite3 via Bun/Node
+// Build: calesteria build examples/todo_api.caria
+
+use npm "hono" as hono
+use npm "better-sqlite3" as Database
+
+let db = Database("todos.db")
+
+fn setup_db() {
+    db.exec("CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, done INTEGER DEFAULT 0)")
+}
+
+// GET /todos — list all
+route GET "/todos" -> fn(c) {
+    let todos = query<Todo>("SELECT * FROM todos")
+    ret c.json(todos)
+}
+
+// GET /todos/:id — single todo
+route GET "/todos/:id" -> fn(c) {
+    let id = c.req.param("id")
+    let todo = query<Todo>("SELECT * FROM todos WHERE id = ?")
+    ret c.json(todo)
+}
+
+// POST /todos — create
+route POST "/todos" -> fn(c) {
+    let body = c.req.json()
+    db.prepare("INSERT INTO todos (title) VALUES (?)").run(body.title)
+    ret c.json({ "message": "created" })
+}
+
+// PUT /todos/:id — update
+route PUT "/todos/:id" -> fn(c) {
+    let id = c.req.param("id")
+    let body = c.req.json()
+    db.prepare("UPDATE todos SET done = ? WHERE id = ?").run(body.done, id)
+    ret c.json({ "message": "updated" })
+}
+
+// DELETE /todos/:id — delete
+route DELETE "/todos/:id" -> fn(c) {
+    let id = c.req.param("id")
+    db.prepare("DELETE FROM todos WHERE id = ?").run(id)
+    ret c.json({ "message": "deleted" })
+}
+
+fn main() {
+    setup_db()
+}
+
+serve 3000

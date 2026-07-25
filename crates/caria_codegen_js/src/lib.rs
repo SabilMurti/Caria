@@ -1,8 +1,9 @@
-use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt, ForStmt, ForInStmt};
+use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt, ForStmt, ForInStmt, RouteDecl, ViewDecl, ServeStmt, HtmlNode, HtmlAttrValue};
 
 pub struct JsCodegen {
     output: String,
     indent_level: usize,
+    app_initialized: bool,
 }
 
 impl JsCodegen {
@@ -10,6 +11,7 @@ impl JsCodegen {
         Self {
             output: String::new(),
             indent_level: 0,
+            app_initialized: false,
         }
     }
 
@@ -43,9 +45,15 @@ impl JsCodegen {
             Statement::UseDecl(decl) => {
                 self.emit_indent();
                 if decl.is_npm {
-                    self.output.push_str("import { ");
-                    self.output.push_str(&decl.symbols.join(", "));
-                    self.output.push_str(&format!(" }} from '{}';\n", decl.module));
+                    if decl.alias_import {
+                        // use npm "pkg" as alias → import alias from 'pkg'
+                        self.output.push_str(&format!("import {} from '{}';\n", decl.symbols[0], decl.module));
+                    } else {
+                        // use npm "pkg" { Sym1, Sym2 } → import { Sym1, Sym2 } from 'pkg'
+                        self.output.push_str("import { ");
+                        self.output.push_str(&decl.symbols.join(", "));
+                        self.output.push_str(&format!(" }} from '{}';\n", decl.module));
+                    }
                 } else {
                     self.output.push_str("import { ");
                     self.output.push_str(&decl.symbols.join(", "));
@@ -63,6 +71,9 @@ impl JsCodegen {
                 self.emit_expression(expr);
                 self.output.push(';');
             }
+            Statement::RouteDecl(decl) => self.emit_route_decl(decl),
+            Statement::ViewDecl(decl) => self.emit_view_decl(decl),
+            Statement::ServeStmt(stmt) => self.emit_serve_stmt(stmt),
         }
     }
 
@@ -495,9 +506,124 @@ impl JsCodegen {
                 self.indent_level -= 1;
                 self.emit_indent();
             }
+            Expression::QueryExpr { sql, .. } => {
+                // query<T>("SQL") → db.prepare("SQL").all()
+                // Parameters extracted at runtime
+                self.output.push_str(&format!("__db.prepare(`{}`).all()", sql));
+            }
+            Expression::StateExpr { initial } => {
+                self.output.push_str("(function() { let __state = ");
+                self.emit_expression(initial);
+                self.output.push_str("; return { get: () => __state, set: (v) => { __state = v; } }; })()");
+            }
         }
     }
 
+
+    fn emit_route_decl(&mut self, decl: &RouteDecl) {
+        if !self.app_initialized {
+            self.output.push_str("const app = new Hono();\n");
+            self.app_initialized = true;
+        }
+        
+        // Generate: app.get("/path", async (req) => { ... })
+        let method = decl.method.to_lowercase();
+        let params_str: Vec<String> = decl.handler.params.iter().map(|p| p.name.clone()).collect();
+        let params_joined = if params_str.is_empty() { "c".into() } else { params_str.join(", ") };
+        self.output.push_str(&format!("app.{}('{}', async ({}) => {{\n", method, decl.path, params_joined));
+        self.indent_level += 1;
+        for stmt in &decl.handler.body {
+            self.emit_statement(stmt);
+            self.output.push('\n');
+        }
+        self.indent_level -= 1;
+        self.output.push_str("});\n");
+    }
+
+    fn emit_serve_stmt(&mut self, stmt: &ServeStmt) {
+        // For Hono on Node: export default { port: N, fetch: app.fetch }
+        self.output.push_str(&format!(
+            "\nexport default {{ port: {}, fetch: app.fetch }};\n",
+            stmt.port
+        ));
+    }
+
+    fn emit_view_decl(&mut self, decl: &ViewDecl) {
+        let params_str: Vec<String> = decl.params.iter().map(|p| p.name.clone()).collect();
+        let params_joined = if params_str.is_empty() { "{}".into() } else { format!("{{ {} }}", params_str.join(", ")) };
+        self.output.push_str(&format!("function {}({}) {{\n", decl.name, params_joined));
+        self.indent_level += 1;
+        self.emit_indent();
+        self.output.push_str("return `\n");
+        for node in &decl.body {
+            self.emit_html_node(node);
+        }
+        self.output.push_str("`;\n");
+        self.indent_level -= 1;
+        self.output.push_str("}\n");
+    }
+
+    fn emit_html_node(&mut self, node: &HtmlNode) {
+        match node {
+            HtmlNode::Element { tag, attrs, children, self_closing } => {
+                self.output.push_str(&format!("<{}", tag));
+                for (name, val) in attrs {
+                    match val {
+                        HtmlAttrValue::Static(s) => self.output.push_str(&format!(" {}=\"{}\"", name, s)),
+                        HtmlAttrValue::Expr(expr) => {
+                            self.output.push_str(&format!(" {}=\"", name));
+                            // Can't easily emit expression inside template string here
+                            // We use ${ } interpolation
+                            self.output.push_str("${");
+                            self.emit_expression(expr);
+                            self.output.push_str("}\"");
+                        }
+                    }
+                }
+                if *self_closing {
+                    self.output.push_str(" />");
+                } else {
+                    self.output.push('>');
+                    for child in children {
+                        self.emit_html_node(child);
+                    }
+                    self.output.push_str(&format!("</{}>", tag));
+                }
+            }
+            HtmlNode::Text(s) => {
+                self.output.push_str(s);
+            }
+            HtmlNode::Expr(expr) => {
+                self.output.push_str("${");
+                self.emit_expression(expr);
+                self.output.push('}');
+            }
+            HtmlNode::ForNode { item, collection, children } => {
+                self.output.push_str("${(");
+                self.emit_expression(collection);
+                self.output.push_str(&format!(").map(({}) => `", item));
+                for child in children {
+                    self.emit_html_node(child);
+                }
+                self.output.push_str("`).join('')}");
+            }
+            HtmlNode::IfNode { condition, then, else_ } => {
+                self.output.push_str("${(");
+                self.emit_expression(condition);
+                self.output.push_str(") ? `");
+                for child in then {
+                    self.emit_html_node(child);
+                }
+                self.output.push_str("` : `");
+                if let Some(else_nodes) = else_ {
+                    for child in else_nodes {
+                        self.emit_html_node(child);
+                    }
+                }
+                self.output.push_str("`}");
+            }
+        }
+    }
     fn emit_indent(&mut self) {
         for _ in 0..self.indent_level {
             self.output.push_str("    ");

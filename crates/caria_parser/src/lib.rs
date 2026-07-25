@@ -42,6 +42,9 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Enum), _)) => self.parse_enum_decl().map(ast::Statement::EnumDecl),
             Some((Ok(Token::Mod), _)) => self.parse_mod_decl().map(ast::Statement::ModDecl),
             Some((Ok(Token::Use), _)) => self.parse_use_decl().map(ast::Statement::UseDecl),
+            Some((Ok(Token::Route), _)) => self.parse_route_decl().map(ast::Statement::RouteDecl),
+            Some((Ok(Token::View), _)) => self.parse_view_decl().map(ast::Statement::ViewDecl),
+            Some((Ok(Token::Serve), _)) => self.parse_serve_stmt().map(ast::Statement::ServeStmt),
             Some((Ok(Token::Ret), _)) => {
                 self.lexer.next(); // consume ret
                 self.parse_expression(0).map(ast::Statement::RetStmt)
@@ -357,6 +360,21 @@ impl<'a> Parser<'a> {
             }
         };
         
+        // Two forms:
+        //   use npm "pkg" as alias          → symbols: ["alias"], is_npm: true
+        //   use npm "pkg" { Sym1, Sym2 }    → symbols: ["Sym1","Sym2"], is_npm: true
+        //   use module.path { Sym1, Sym2 }  → existing form
+        if is_npm {
+            if let Some((Ok(Token::As), _)) = self.lexer.peek() {
+                self.lexer.next(); // consume 'as'
+                let alias = match self.lexer.next() {
+                    Some((Ok(Token::Ident(n)), _)) => n,
+                    _ => return Err(ParseError::UnexpectedToken("Expected alias name after 'as'".into())),
+                };
+                return Ok(ast::UseDecl { module, is_npm, alias_import: true, symbols: vec![alias] });
+            }
+        }
+
         self.expect(Token::LBrace)?;
         
         let mut symbols = Vec::new();
@@ -376,7 +394,7 @@ impl<'a> Parser<'a> {
         
         self.expect(Token::RBrace)?;
         
-        Ok(ast::UseDecl { module, is_npm, symbols })
+        Ok(ast::UseDecl { module, is_npm, alias_import: false, symbols })
     }
 
     fn parse_let_stmt(&mut self) -> Result<ast::LetStmt, ParseError> {
@@ -546,6 +564,33 @@ impl<'a> Parser<'a> {
                 self.expect(Token::RBrace)?;
                 ast::Expression::MapLiteral(pairs)
             },
+            Some((Ok(Token::Query), _)) => {
+                // query<T>("SQL") — optional generic type hint
+                let type_hint = if let Some((Ok(Token::Less), _)) = self.lexer.peek() {
+                    self.lexer.next(); // consume '<'
+                    let t = match self.lexer.next() {
+                        Some((Ok(Token::Ident(name)), _)) => name,
+                        _ => return Err(ParseError::UnexpectedToken("Expected type in query<T>".into())),
+                    };
+                    self.expect(Token::Greater)?;
+                    Some(t)
+                } else {
+                    None
+                };
+                self.expect(Token::LParen)?;
+                let sql = match self.lexer.next() {
+                    Some((Ok(Token::Str(s)), _)) => s,
+                    _ => return Err(ParseError::UnexpectedToken("query() expects a string literal SQL".into())),
+                };
+                self.expect(Token::RParen)?;
+                ast::Expression::QueryExpr { type_hint, sql }
+            },
+            Some((Ok(Token::State), _)) => {
+                self.expect(Token::LParen)?;
+                let initial = Box::new(self.parse_expression(0)?);
+                self.expect(Token::RParen)?;
+                ast::Expression::StateExpr { initial }
+            },
             got => return Err(ParseError::UnexpectedToken(format!("Expected expression, got {:?}", got))),
         };
         // Call Expression
@@ -651,6 +696,222 @@ impl<'a> Parser<'a> {
         }
     }
 
+
+    fn parse_route_decl(&mut self) -> Result<ast::RouteDecl, ParseError> {
+        self.expect(Token::Route)?;
+        
+        // HTTP method: GET, POST, PUT, DELETE, PATCH (lexed as Ident)
+        let method = match self.lexer.next() {
+            Some((Ok(Token::Ident(m)), _)) => m.to_uppercase(),
+            _ => return Err(ParseError::UnexpectedToken("Expected HTTP method (GET, POST, etc.)".into())),
+        };
+        
+        // Path: string literal "/api/todos"
+        let path = match self.lexer.next() {
+            Some((Ok(Token::Str(p)), _)) => p,
+            _ => return Err(ParseError::UnexpectedToken("Expected path string after HTTP method".into())),
+        };
+        
+        // Arrow: ->
+        self.expect(Token::Arrow)?;
+        
+        // Handler: anonymous fn or fn keyword
+        // Parse as `fn(params) { body }` — consuming fn keyword if present
+        if let Some((Ok(Token::Fn), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume fn
+        }
+        
+        let mut params = Vec::new();
+        if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
+            self.lexer.next();
+            while let Some((Ok(token), _)) = self.lexer.peek() {
+                if token == &Token::RParen { break; }
+                let param_name = match self.lexer.next() {
+                    Some((Ok(Token::Ident(n)), _)) => n,
+                    _ => return Err(ParseError::UnexpectedToken("Expected param name in route handler".into())),
+                };
+                // type annotation is optional for route handlers
+                let type_name = if let Some((Ok(Token::Colon), _)) = self.lexer.peek() {
+                    self.lexer.next();
+                    match self.lexer.next() {
+                        Some((Ok(Token::Ident(t)), _)) => t,
+                        _ => return Err(ParseError::UnexpectedToken("Expected type".into())),
+                    }
+                } else {
+                    "Any".into()
+                };
+                params.push(ast::FnParam { name: param_name, type_name, default_value: None });
+                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() { self.lexer.next(); }
+            }
+            self.expect(Token::RParen)?;
+        }
+        
+        self.expect(Token::LBrace)?;
+        let mut body = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RBrace { break; }
+            body.push(self.parse_statement()?);
+        }
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::RouteDecl {
+            method,
+            path,
+            handler: ast::FnDecl { name: "_route_handler".into(), params, return_type: None, body },
+        })
+    }
+
+    fn parse_serve_stmt(&mut self) -> Result<ast::ServeStmt, ParseError> {
+        self.expect(Token::Serve)?;
+        let port = match self.lexer.next() {
+            Some((Ok(Token::Int(n)), _)) => n as u16,
+            _ => return Err(ParseError::UnexpectedToken("Expected port number after serve".into())),
+        };
+        Ok(ast::ServeStmt { port })
+    }
+
+    fn parse_view_decl(&mut self) -> Result<ast::ViewDecl, ParseError> {
+        self.expect(Token::View)?;
+        let name = match self.lexer.next() {
+            Some((Ok(Token::Ident(n)), _)) => n,
+            _ => return Err(ParseError::UnexpectedToken("Expected view name".into())),
+        };
+        
+        let mut params = Vec::new();
+        if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
+            self.lexer.next();
+            while let Some((Ok(token), _)) = self.lexer.peek() {
+                if token == &Token::RParen { break; }
+                let param_name = match self.lexer.next() {
+                    Some((Ok(Token::Ident(n)), _)) => n,
+                    _ => return Err(ParseError::UnexpectedToken("Expected param name in view".into())),
+                };
+                let type_name = if let Some((Ok(Token::Colon), _)) = self.lexer.peek() {
+                    self.lexer.next();
+                    match self.lexer.next() {
+                        Some((Ok(Token::Ident(t)), _)) => t,
+                        _ => "Any".into(),
+                    }
+                } else { "Any".into() };
+                params.push(ast::FnParam { name: param_name, type_name, default_value: None });
+                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() { self.lexer.next(); }
+            }
+            self.expect(Token::RParen)?;
+        }
+        
+        self.expect(Token::LBrace)?;
+        let body = self.parse_html_children()?;
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::ViewDecl { name, params, body })
+    }
+
+    fn parse_html_children(&mut self) -> Result<Vec<ast::HtmlNode>, ParseError> {
+        let mut children = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            match token {
+                Token::RBrace => break,
+                Token::Less => {
+                    self.lexer.next(); // consume '<'
+                    // Check for closing tag </tag>
+                    if let Some((Ok(Token::Slash), _)) = self.lexer.peek() {
+                        // closing tag — stop collecting children
+                        self.lexer.next(); // consume '/'
+                        // consume tag name
+                        self.lexer.next();
+                        self.expect(Token::Greater)?;
+                        break;
+                    }
+                    let tag = match self.lexer.next() {
+                        Some((Ok(Token::Ident(t)), _)) => t,
+                        _ => return Err(ParseError::UnexpectedToken("Expected tag name".into())),
+                    };
+                    let mut attrs = Vec::new();
+                    let mut self_closing = false;
+                    // parse attrs
+                    while let Some((Ok(tok), _)) = self.lexer.peek() {
+                        match tok {
+                            Token::Greater => { self.lexer.next(); break; }
+                            Token::Slash => {
+                                self.lexer.next(); // '/'
+                                self.expect(Token::Greater)?;
+                                self_closing = true;
+                                break;
+                            }
+                            Token::Ident(_) => {
+                                let attr_name = match self.lexer.next() {
+                                    Some((Ok(Token::Ident(n)), _)) => n,
+                                    _ => break,
+                                };
+                                if let Some((Ok(Token::Eq), _)) = self.lexer.peek() {
+                                    self.lexer.next(); // '='
+                                    let val = if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
+                                        self.lexer.next();
+                                        let expr = self.parse_expression(0)?;
+                                        self.expect(Token::RBrace)?;
+                                        ast::HtmlAttrValue::Expr(expr)
+                                    } else {
+                                        match self.lexer.next() {
+                                            Some((Ok(Token::Str(s)), _)) => ast::HtmlAttrValue::Static(s),
+                                            _ => return Err(ParseError::UnexpectedToken("Expected attribute value".into())),
+                                        }
+                                    };
+                                    attrs.push((attr_name, val));
+                                }
+                            }
+                            _ => { self.lexer.next(); }
+                        }
+                    }
+                    let child_nodes = if self_closing { vec![] } else { self.parse_html_children()? };
+                    children.push(ast::HtmlNode::Element { tag, attrs, children: child_nodes, self_closing });
+                }
+                Token::LBrace => {
+                    self.lexer.next(); // '{'
+                    // check for control flow: for, if
+                    if let Some((Ok(Token::For), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                        let item = match self.lexer.next() {
+                            Some((Ok(Token::Ident(n)), _)) => n,
+                            _ => return Err(ParseError::UnexpectedToken("Expected item in for".into())),
+                        };
+                        self.expect(Token::In)?;
+                        let collection = Box::new(self.parse_expression(0)?);
+                        self.expect(Token::LBrace)?;
+                        let inner = self.parse_html_children()?;
+                        self.expect(Token::RBrace)?;
+                        self.expect(Token::RBrace)?;
+                        children.push(ast::HtmlNode::ForNode { item, collection, children: inner });
+                    } else if let Some((Ok(Token::If), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                        let condition = Box::new(self.parse_expression(0)?);
+                        self.expect(Token::LBrace)?;
+                        let then = self.parse_html_children()?;
+                        self.expect(Token::RBrace)?;
+                        let else_ = if let Some((Ok(Token::Else), _)) = self.lexer.peek() {
+                            self.lexer.next();
+                            self.expect(Token::LBrace)?;
+                            let e = self.parse_html_children()?;
+                            self.expect(Token::RBrace)?;
+                            Some(e)
+                        } else { None };
+                        self.expect(Token::RBrace)?;
+                        children.push(ast::HtmlNode::IfNode { condition, then, else_ });
+                    } else {
+                        let expr = self.parse_expression(0)?;
+                        self.expect(Token::RBrace)?;
+                        children.push(ast::HtmlNode::Expr(expr));
+                    }
+                }
+                Token::Str(s) => {
+                    let s = s.clone();
+                    self.lexer.next();
+                    children.push(ast::HtmlNode::Text(s));
+                }
+                _ => { self.lexer.next(); } // skip unknown tokens in HTML context
+            }
+        }
+        Ok(children)
+    }
 
 }
 #[cfg(test)]

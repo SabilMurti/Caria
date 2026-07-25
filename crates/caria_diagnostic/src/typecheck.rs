@@ -135,6 +135,8 @@ impl TypeChecker {
             Expression::ErrorPropagate(_) => Ok(("Any".into(), false)),
             Expression::StructInst { .. } => Ok(("Struct".into(), false)),
             Expression::IfExpr(_) => Ok(("Any".into(), false)),
+            Expression::QueryExpr { .. } => Ok(("List".into(), false)),
+            Expression::StateExpr { .. } => Ok(("Any".into(), false)),
         }
     }
 }

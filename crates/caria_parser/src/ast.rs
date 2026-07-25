@@ -19,6 +19,9 @@ pub enum Statement {
     ModDecl(ModDecl),
     UseDecl(UseDecl),
     RetStmt(Expression),
+    RouteDecl(RouteDecl),
+    ViewDecl(ViewDecl),
+    ServeStmt(ServeStmt),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -30,6 +33,7 @@ pub struct ModDecl {
 pub struct UseDecl {
     pub module: String,
     pub is_npm: bool,
+    pub alias_import: bool, // true = `as alias` form → default import
     pub symbols: Vec<String>,
 }
 #[derive(Debug, PartialEq, Clone)]
@@ -152,6 +156,13 @@ pub enum Expression {
         callee: Box<Expression>,
         args: Vec<Expression>,
     },
+    QueryExpr {
+        type_hint: Option<String>,   // T in query<T>(...)
+        sql: String,
+    },
+    StateExpr {
+        initial: Box<Expression>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -186,4 +197,52 @@ pub enum Pattern {
     Literal(Literal),
     Wildcard,
     Tuple(Vec<Pattern>),
+}
+// ── Phase 3: Web Server ─────────────────────────────────────────────────────
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct RouteDecl {
+    pub method: String,       // "GET", "POST", "PUT", "DELETE", "PATCH"
+    pub path: String,         // "/api/todos/{id}"
+    pub handler: FnDecl,      // anonymous fn body
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ViewDecl {
+    pub name: String,
+    pub params: Vec<FnParam>,
+    pub body: Vec<HtmlNode>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ServeStmt {
+    pub port: u16,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum HtmlNode {
+    Element {
+        tag: String,
+        attrs: Vec<(String, HtmlAttrValue)>,
+        children: Vec<HtmlNode>,
+        self_closing: bool,
+    },
+    Text(String),
+    Expr(Expression),     // {expr} interpolation
+    IfNode {
+        condition: Box<Expression>,
+        then: Vec<HtmlNode>,
+        else_: Option<Vec<HtmlNode>>,
+    },
+    ForNode {
+        item: String,
+        collection: Box<Expression>,
+        children: Vec<HtmlNode>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum HtmlAttrValue {
+    Static(String),
+    Expr(Expression),
 }
