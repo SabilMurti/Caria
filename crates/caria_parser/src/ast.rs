@@ -7,7 +7,29 @@ pub struct Program {
 pub enum Statement {
     FnDecl(FnDecl),
     LetStmt(LetStmt),
+    MutStmt(MutStmt),
+    AssignStmt(AssignStmt),
     ExprStmt(Expression),
+    IfExpr(IfExpr), // Used as a statement when it has no return
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct IfExpr {
+    pub condition: Box<Expression>,
+    pub consequence: Vec<Statement>,
+    pub alternative: Option<Vec<Statement>>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct MutStmt {
+    pub name: String,
+    pub value: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct AssignStmt {
+    pub name: String,
+    pub value: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -26,6 +48,7 @@ pub struct LetStmt {
 pub enum Expression {
     Literal(Literal),
     Identifier(String),
+    IfExpr(IfExpr),
     BinaryExpr {
         left: Box<Expression>,
         op: BinaryOp,
@@ -51,4 +74,13 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
+    Eq,
+    NotEq,
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
+    And,
+    Or,
 }
