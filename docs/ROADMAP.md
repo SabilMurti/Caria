@@ -135,31 +135,31 @@ Hello, Calesteria!
 - [x] Field access: `user.name`
 - [x] Enums: `enum Color { Red, Green, Blue }`
 - [x] Enum with data: `enum Shape { Circle(radius: Float), Rect(w: Float, h: Float) }`
-- [ ] Pattern matching on enums (exhaustive check)
+- [x] Pattern matching on enums (exhaustive check) - Parser only
 
 ### Milestone 2.5 — Null Safety
-- [ ] `T?` nullable types
-- [ ] `nil` literal
-- [ ] `?.` safe chaining
-- [ ] `??` null coalescing
-- [ ] `match` with `some(val)` / `nil` patterns
+- [x] `T?` nullable types
+- [x] `nil` literal
+- [x] `?.` safe chaining
+- [x] `??` null coalescing
+- [x] `match` with `some(val)` / `nil` patterns
 - [ ] Compiler error when using `T?` without null check
 
 ### Milestone 2.6 — Error Handling
-- [ ] `Result<T, E>` type
-- [ ] `Ok(value)` and `Err(error)` constructors
-- [ ] `?` propagation operator
-- [ ] `match` on Result
+- [x] `Result<T, E>` type
+- [x] `Ok(value)` and `Err(error)` constructors
+- [x] `?` propagation operator
+- [x] `match` on Result
 
 ### Milestone 2.7 — Modules
-- [ ] `mod name` declaration
-- [ ] `pub` visibility modifier
-- [ ] `use module { Symbol }` imports
-- [ ] Multi-file compilation
+- [x] `mod name` declaration
+- [x] `pub` visibility modifier
+- [x] `use module { Symbol }` imports
+- [x] Multi-file compilation - Supported in parser
 
 ### Milestone 2.8 — Collections
-- [ ] `List<T>` — `[1, 2, 3]`
-- [ ] `Map<K, V>` — `{"key": "val"}`
+- [x] `List<T>` — `[1, 2, 3]`
+- [x] `Map<K, V>` — `{"key": "val"}`
 - [ ] List methods: `.push()`, `.map()`, `.filter()`, `.len()`
 - [ ] Map methods: `.get()`, `.set()`, `.keys()`, `.values()`
 
