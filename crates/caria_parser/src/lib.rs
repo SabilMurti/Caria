@@ -36,6 +36,16 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Let), _)) => self.parse_let_stmt().map(ast::Statement::LetStmt),
             Some((Ok(Token::Mut), _)) => self.parse_mut_stmt().map(ast::Statement::MutStmt),
             Some((Ok(Token::If), _)) => self.parse_if_expr().map(ast::Statement::IfExpr),
+            Some((Ok(Token::While), _)) => self.parse_while_stmt().map(ast::Statement::WhileStmt),
+            Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
+            Some((Ok(Token::Pub), _)) => {
+                // Lookahead for struct
+                self.lexer.next(); // Consume pub
+                match self.lexer.peek() {
+                    Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
+                    _ => return Err(ParseError::UnexpectedToken("Expected struct after pub".into())),
+                }
+            }
             _ => {
                 // Could be ExprStmt or AssignStmt
                 // We handle AssignStmt hackily here for simplicity right now
@@ -61,7 +71,42 @@ impl<'a> Parser<'a> {
         };
 
         self.expect(Token::LParen)?;
-        self.expect(Token::RParen)?; // Skipping args for now
+        
+        let mut params = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RParen {
+                break;
+            }
+            
+            let param_name = match self.lexer.next() {
+                Some((Ok(Token::Ident(n)), _)) => n,
+                _ => return Err(ParseError::UnexpectedToken("Expected parameter name".into())),
+            };
+            
+            self.expect(Token::Colon)?;
+            
+            let type_name = match self.lexer.next() {
+                Some((Ok(Token::Ident(t)), _)) => t,
+                _ => return Err(ParseError::UnexpectedToken("Expected type name".into())),
+            };
+            
+            params.push(ast::FnParam { name: param_name, type_name });
+            
+            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                self.lexer.next();
+            }
+        }
+        
+        self.expect(Token::RParen)?;
+        
+        let mut return_type = None;
+        if let Some((Ok(Token::Arrow), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume ->
+            match self.lexer.next() {
+                Some((Ok(Token::Ident(t)), _)) => return_type = Some(t),
+                _ => return Err(ParseError::UnexpectedToken("Expected return type".into())),
+            }
+        }
 
         self.expect(Token::LBrace)?;
 
@@ -74,8 +119,60 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(Token::RBrace)?;
+        Ok(ast::FnDecl { name, params, return_type, body })
+    }
 
-        Ok(ast::FnDecl { name, body })
+    fn parse_while_stmt(&mut self) -> Result<ast::WhileStmt, ParseError> {
+        self.expect(Token::While)?;
+        let condition = Box::new(self.parse_expression(0)?);
+        
+        self.expect(Token::LBrace)?;
+        let mut body = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RBrace { break; }
+            body.push(self.parse_statement()?);
+        }
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::WhileStmt { condition, body })
+    }
+
+    fn parse_struct_decl(&mut self) -> Result<ast::StructDecl, ParseError> {
+        self.expect(Token::Struct)?;
+        
+        let name = match self.lexer.next() {
+            Some((Ok(Token::Ident(name)), _)) => name,
+            _ => return Err(ParseError::UnexpectedToken("Expected struct name".into())),
+        };
+        
+        self.expect(Token::LBrace)?;
+        
+        let mut fields = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RBrace { break; }
+            
+            let field_name = match self.lexer.next() {
+                Some((Ok(Token::Ident(n)), _)) => n,
+                _ => return Err(ParseError::UnexpectedToken("Expected field name".into())),
+            };
+            
+            self.expect(Token::Colon)?;
+            
+            let type_name = match self.lexer.next() {
+                Some((Ok(Token::Ident(t)), _)) => t,
+                _ => return Err(ParseError::UnexpectedToken("Expected type name".into())),
+            };
+            
+            fields.push(ast::StructField { name: field_name, type_name });
+            
+            // Optional comma
+            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                self.lexer.next();
+            }
+        }
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::StructDecl { name, fields })
     }
 
     fn parse_let_stmt(&mut self) -> Result<ast::LetStmt, ParseError> {
@@ -152,9 +249,11 @@ impl<'a> Parser<'a> {
         if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
             self.lexer.next(); // consume '('
             let mut args = Vec::new();
-            if let Some((Ok(token), _)) = self.lexer.peek() {
-                if token != &Token::RParen {
-                    args.push(self.parse_expression(0)?);
+            while let Some((Ok(token), _)) = self.lexer.peek() {
+                if token == &Token::RParen { break; }
+                args.push(self.parse_expression(0)?);
+                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                    self.lexer.next();
                 }
             }
             self.expect(Token::RParen)?;
@@ -163,7 +262,49 @@ impl<'a> Parser<'a> {
                 args,
             };
         }
-        
+
+        // Struct instantiation
+        if let ast::Expression::Identifier(ref name) = left {
+            // Heuristic for Phase 2: If we see Ident followed by {, we assume struct instantiation
+            if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
+                self.lexer.next(); // consume '{'
+                let mut fields = Vec::new();
+                while let Some((Ok(token), _)) = self.lexer.peek() {
+                    if token == &Token::RBrace { break; }
+                    
+                    let field_name = match self.lexer.next() {
+                        Some((Ok(Token::Ident(n)), _)) => n,
+                        _ => return Err(ParseError::UnexpectedToken("Expected field name in struct inst".into())),
+                    };
+                    
+                    self.expect(Token::Colon)?;
+                    let value = self.parse_expression(0)?;
+                    fields.push((field_name, value));
+                    
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                self.expect(Token::RBrace)?;
+                left = ast::Expression::StructInst {
+                    name: name.clone(),
+                    fields,
+                };
+            }
+        }
+
+        // Member access (Dot operator)
+        while let Some((Ok(Token::Dot), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume '.'
+            let member = match self.lexer.next() {
+                Some((Ok(Token::Ident(n)), _)) => n,
+                _ => return Err(ParseError::UnexpectedToken("Expected property name after .".into())),
+            };
+            left = ast::Expression::MemberAccess {
+                object: Box::new(left),
+                member,
+            };
+        }
         loop {
             let op = match self.lexer.peek() {
                 Some((Ok(Token::Plus), _)) => ast::BinaryOp::Add,
@@ -224,8 +365,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-}
 
+}
 #[cfg(test)]
 mod tests {
     use super::*;

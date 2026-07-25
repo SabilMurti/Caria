@@ -10,7 +10,27 @@ pub enum Statement {
     MutStmt(MutStmt),
     AssignStmt(AssignStmt),
     ExprStmt(Expression),
-    IfExpr(IfExpr), // Used as a statement when it has no return
+    IfExpr(IfExpr),
+    WhileStmt(WhileStmt),
+    StructDecl(StructDecl),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WhileStmt {
+    pub condition: Box<Expression>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct StructDecl {
+    pub name: String,
+    pub fields: Vec<StructField>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct StructField {
+    pub name: String,
+    pub type_name: String, // Simplified type representation for now
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -35,7 +55,15 @@ pub struct AssignStmt {
 #[derive(Debug, PartialEq, Clone)]
 pub struct FnDecl {
     pub name: String,
+    pub params: Vec<FnParam>,
+    pub return_type: Option<String>,
     pub body: Vec<Statement>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct FnParam {
+    pub name: String,
+    pub type_name: String,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -49,6 +77,14 @@ pub enum Expression {
     Literal(Literal),
     Identifier(String),
     IfExpr(IfExpr),
+    StructInst {
+        name: String,
+        fields: Vec<(String, Expression)>,
+    },
+    MemberAccess {
+        object: Box<Expression>,
+        member: String,
+    },
     BinaryExpr {
         left: Box<Expression>,
         op: BinaryOp,
