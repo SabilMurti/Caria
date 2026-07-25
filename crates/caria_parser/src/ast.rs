@@ -97,6 +97,7 @@ pub enum Expression {
     MemberAccess {
         object: Box<Expression>,
         member: String,
+        is_safe: bool, // true for ?.
     },
     BinaryExpr {
         left: Box<Expression>,
@@ -115,6 +116,7 @@ pub enum Literal {
     Float(f64),
     Str(String),
     Bool(bool),
+    Nil,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -132,4 +134,5 @@ pub enum BinaryOp {
     GreaterEq,
     And,
     Or,
+    Coalesce, // ??
 }

@@ -252,7 +252,6 @@ impl<'a> Parser<'a> {
         Ok(ast::LetStmt { name, value })
     }
     fn parse_mut_stmt(&mut self) -> Result<ast::MutStmt, ParseError> {
-        self.expect(Token::Mut)?;
         let name = match self.lexer.next() {
             Some((Ok(Token::Ident(name)), _)) => name,
             _ => return Err(ParseError::UnexpectedToken("Expected variable name".into())),
@@ -264,6 +263,7 @@ impl<'a> Parser<'a> {
 
     fn parse_if_expr(&mut self) -> Result<ast::IfExpr, ParseError> {
         self.expect(Token::If)?;
+        
         let condition = Box::new(self.parse_expression(0)?);
         
         self.expect(Token::LBrace)?;
@@ -304,6 +304,7 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Str(val)), _)) => ast::Expression::Literal(ast::Literal::Str(val)),
             Some((Ok(Token::True), _)) => ast::Expression::Literal(ast::Literal::Bool(true)),
             Some((Ok(Token::False), _)) => ast::Expression::Literal(ast::Literal::Bool(false)),
+            Some((Ok(Token::Nil), _)) => ast::Expression::Literal(ast::Literal::Nil),
             Some((Ok(Token::Ident(name)), _)) => ast::Expression::Identifier(name),
             _ => return Err(ParseError::UnexpectedToken("Expected expression".into())),
         };
@@ -319,7 +320,6 @@ impl<'a> Parser<'a> {
                     self.lexer.next();
                 }
             }
-            self.expect(Token::RParen)?;
             left = ast::Expression::CallExpr {
                 callee: Box::new(left),
                 args,
@@ -345,7 +345,6 @@ impl<'a> Parser<'a> {
                     fields.push((field_name, value));
                     
                     if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                        self.lexer.next();
                     }
                 }
                 self.expect(Token::RBrace)?;
@@ -357,16 +356,22 @@ impl<'a> Parser<'a> {
         }
 
         // Member access (Dot operator)
-        while let Some((Ok(Token::Dot), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume '.'
-            let member = match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => n,
-                _ => return Err(ParseError::UnexpectedToken("Expected property name after .".into())),
-            };
-            left = ast::Expression::MemberAccess {
-                object: Box::new(left),
-                member,
-            };
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            let is_safe = token == &Token::SafeChain;
+            if token == &Token::Dot || is_safe {
+                self.lexer.next(); // consume '.' or '?.'
+                let member = match self.lexer.next() {
+                    Some((Ok(Token::Ident(n)), _)) => n,
+                    _ => return Err(ParseError::UnexpectedToken("Expected property name".into())),
+                };
+                left = ast::Expression::MemberAccess {
+                    object: Box::new(left),
+                    member,
+                    is_safe,
+                };
+            } else {
+                break;
+            }
         }
         loop {
             let op = match self.lexer.peek() {
@@ -383,6 +388,7 @@ impl<'a> Parser<'a> {
                 Some((Ok(Token::GreaterEq), _)) => ast::BinaryOp::GreaterEq,
                 Some((Ok(Token::And), _)) => ast::BinaryOp::And,
                 Some((Ok(Token::Or), _)) => ast::BinaryOp::Or,
+                Some((Ok(Token::Coalesce), _)) => ast::BinaryOp::Coalesce,
                 _ => break,
             };
             
@@ -406,13 +412,14 @@ impl<'a> Parser<'a> {
 
     fn infix_binding_power(&self, op: &ast::BinaryOp) -> (u8, u8) {
         match op {
-            ast::BinaryOp::Or => (1, 2),
-            ast::BinaryOp::And => (3, 4),
+            ast::BinaryOp::Coalesce => (1, 2), // Lowest precedence logic
+            ast::BinaryOp::Or => (3, 4),
+            ast::BinaryOp::And => (5, 6),
             ast::BinaryOp::Eq | ast::BinaryOp::NotEq | 
             ast::BinaryOp::Less | ast::BinaryOp::Greater | 
-            ast::BinaryOp::LessEq | ast::BinaryOp::GreaterEq => (5, 6),
-            ast::BinaryOp::Add | ast::BinaryOp::Subtract => (7, 8),
-            ast::BinaryOp::Multiply | ast::BinaryOp::Divide | ast::BinaryOp::Modulo => (9, 10),
+            ast::BinaryOp::LessEq | ast::BinaryOp::GreaterEq => (7, 8),
+            ast::BinaryOp::Add | ast::BinaryOp::Subtract => (9, 10),
+            ast::BinaryOp::Multiply | ast::BinaryOp::Divide | ast::BinaryOp::Modulo => (11, 12),
         }
     }
 

@@ -30,6 +30,10 @@ impl JsCodegen {
             Statement::IfExpr(expr) => self.emit_if_expr(expr),
             Statement::WhileStmt(stmt) => self.emit_while_stmt(stmt),
             Statement::StructDecl(decl) => self.emit_struct_decl(decl),
+            Statement::EnumDecl(_) => {
+                // Enums in JS for Phase 2: just generate empty class or comments
+                // Phase 3 will generate proper tagged union factories
+            },
             Statement::ExprStmt(expr) => {
                 self.emit_expression(expr);
                 self.output.push(';');
@@ -218,14 +222,13 @@ impl JsCodegen {
                     caria_parser::ast::BinaryOp::GreaterEq => " >= ",
                     caria_parser::ast::BinaryOp::And => " && ",
                     caria_parser::ast::BinaryOp::Or => " || ",
+                    caria_parser::ast::BinaryOp::Coalesce => " ?? ",
                 };
                 self.output.push_str(op_str);
                 self.emit_expression(right);
             }
             Expression::IfExpr(expr) => {
                 self.output.push_str("(() => {\n");
-                self.indent_level += 1;
-                
                 self.emit_indent();
                 self.output.push_str("if (");
                 self.emit_expression(&expr.condition);
