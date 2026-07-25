@@ -33,8 +33,25 @@ impl JsCodegen {
             Statement::EnumDecl(_) => {
                 // Enums in JS for Phase 2: just generate empty class or comments
                 // Phase 3 will generate proper tagged union factories
-            },
+            }
+            Statement::ModDecl(_) => {
+                // JS modules don't map 1:1 to Calesteria modules
+                // Handled implicitly via file system
+            }
+            Statement::UseDecl(decl) => {
+                self.emit_indent();
+                if decl.is_npm {
+                    self.output.push_str("import { ");
+                    self.output.push_str(&decl.symbols.join(", "));
+                    self.output.push_str(&format!(" }} from '{}';\n", decl.module));
+                } else {
+                    self.output.push_str("import { ");
+                    self.output.push_str(&decl.symbols.join(", "));
+                    self.output.push_str(&format!(" }} from './{}.js';\n", decl.module.replace(".", "/")));
+                }
+            }
             Statement::ExprStmt(expr) => {
+                self.emit_indent();
                 self.emit_expression(expr);
                 self.output.push(';');
             }
@@ -173,6 +190,9 @@ impl JsCodegen {
             Expression::Literal(Literal::Bool(val)) => {
                 self.output.push_str(if *val { "true" } else { "false" })
             }
+            Expression::Literal(Literal::Nil) => {
+                self.output.push_str("null");
+            }
             Expression::Identifier(name) => {
                 if name == "print" {
                     self.output.push_str("console.log");
@@ -190,10 +210,38 @@ impl JsCodegen {
                 }
                 self.output.push_str(" })");
             }
-            Expression::MemberAccess { object, member } => {
+            Expression::MemberAccess { object, member, is_safe } => {
                 self.emit_expression(object);
-                self.output.push('.');
+                if *is_safe {
+                    self.output.push_str("?.");
+                } else {
+                    self.output.push('.');
+                }
                 self.output.push_str(member);
+            }
+            Expression::ErrorPropagate(expr) => {
+                // Phase 2 naive representation: await execution
+                // A real result unwrap would require an unwrap macro or error bubble wrapper
+                self.output.push_str("await ");
+                self.emit_expression(expr);
+            }
+            Expression::ArrayLiteral(elements) => {
+                self.output.push('[');
+                for (i, el) in elements.iter().enumerate() {
+                    if i > 0 { self.output.push_str(", "); }
+                    self.emit_expression(el);
+                }
+                self.output.push(']');
+            }
+            Expression::MapLiteral(pairs) => {
+                self.output.push_str("{ ");
+                for (i, (key, value)) in pairs.iter().enumerate() {
+                    if i > 0 { self.output.push_str(", "); }
+                    self.emit_expression(key);
+                    self.output.push_str(": ");
+                    self.emit_expression(value);
+                }
+                self.output.push_str(" }");
             }
             Expression::CallExpr { callee, args } => {
                 self.emit_expression(callee);
@@ -275,10 +323,9 @@ impl JsCodegen {
                 self.output.push('\n');
                 self.indent_level -= 1;
                 self.emit_indent();
-                self.output.push_str("})()");
             }
         }
-            }
+    }
 
     fn emit_indent(&mut self) {
         for _ in 0..self.indent_level {
@@ -316,6 +363,6 @@ mod tests {
             })],
         };
         let js = codegen.generate(&prog);
-        assert_eq!(js.trim(), "if (true) {\nx;\n}");
+        assert_eq!(js.trim(), "if (true) {\n    x;\n}");
     }
 }

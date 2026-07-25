@@ -39,6 +39,8 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::While), _)) => self.parse_while_stmt().map(ast::Statement::WhileStmt),
             Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
             Some((Ok(Token::Enum), _)) => self.parse_enum_decl().map(ast::Statement::EnumDecl),
+            Some((Ok(Token::Mod), _)) => self.parse_mod_decl().map(ast::Statement::ModDecl),
+            Some((Ok(Token::Use), _)) => self.parse_use_decl().map(ast::Statement::UseDecl),
             Some((Ok(Token::Pub), _)) => {
                 // Lookahead for struct or enum
                 self.lexer.next(); // Consume pub
@@ -238,6 +240,81 @@ impl<'a> Parser<'a> {
         Ok(ast::EnumDecl { name, variants })
     }
 
+    fn parse_mod_decl(&mut self) -> Result<ast::ModDecl, ParseError> {
+        self.expect(Token::Mod)?;
+        let mut parts = Vec::new();
+        
+        let name = match self.lexer.next() {
+            Some((Ok(Token::Ident(name)), _)) => name,
+            _ => return Err(ParseError::UnexpectedToken("Expected module name".into())),
+        };
+        parts.push(name);
+        
+        while let Some((Ok(Token::Dot), _)) = self.lexer.peek() {
+            self.lexer.next();
+            match self.lexer.next() {
+                Some((Ok(Token::Ident(n)), _)) => parts.push(n),
+                _ => return Err(ParseError::UnexpectedToken("Expected identifier after dot in module path".into())),
+            }
+        }
+        
+        Ok(ast::ModDecl { name: parts.join(".") })
+    }
+
+    fn parse_use_decl(&mut self) -> Result<ast::UseDecl, ParseError> {
+        self.expect(Token::Use)?;
+        
+        let mut is_npm = false;
+        let module = match self.lexer.peek() {
+            Some((Ok(Token::Ident(n)), _)) if n == "npm" => {
+                is_npm = true;
+                self.lexer.next();
+                match self.lexer.next() {
+                    Some((Ok(Token::Str(s)), _)) => s,
+                    _ => return Err(ParseError::UnexpectedToken("Expected package string after npm".into())),
+                }
+            }
+            _ => {
+                let mut parts = Vec::new();
+                let first = match self.lexer.next() {
+                    Some((Ok(Token::Ident(name)), _)) => name,
+                    _ => return Err(ParseError::UnexpectedToken("Expected module path".into())),
+                };
+                parts.push(first);
+                
+                while let Some((Ok(Token::Dot), _)) = self.lexer.peek() {
+                    self.lexer.next();
+                    match self.lexer.next() {
+                        Some((Ok(Token::Ident(n)), _)) => parts.push(n),
+                        _ => return Err(ParseError::UnexpectedToken("Expected identifier after dot".into())),
+                    }
+                }
+                parts.join(".")
+            }
+        };
+        
+        self.expect(Token::LBrace)?;
+        
+        let mut symbols = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RBrace { break; }
+            
+            let sym = match self.lexer.next() {
+                Some((Ok(Token::Ident(n)), _)) => n,
+                _ => return Err(ParseError::UnexpectedToken("Expected symbol name".into())),
+            };
+            symbols.push(sym);
+            
+            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                self.lexer.next();
+            }
+        }
+        
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::UseDecl { module, is_npm, symbols })
+    }
+
     fn parse_let_stmt(&mut self) -> Result<ast::LetStmt, ParseError> {
         self.expect(Token::Let)?;
 
@@ -302,10 +379,35 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Int(val)), _)) => ast::Expression::Literal(ast::Literal::Int(val)),
             Some((Ok(Token::Float(val)), _)) => ast::Expression::Literal(ast::Literal::Float(val)),
             Some((Ok(Token::Str(val)), _)) => ast::Expression::Literal(ast::Literal::Str(val)),
-            Some((Ok(Token::True), _)) => ast::Expression::Literal(ast::Literal::Bool(true)),
-            Some((Ok(Token::False), _)) => ast::Expression::Literal(ast::Literal::Bool(false)),
             Some((Ok(Token::Nil), _)) => ast::Expression::Literal(ast::Literal::Nil),
             Some((Ok(Token::Ident(name)), _)) => ast::Expression::Identifier(name),
+            Some((Ok(Token::LBracket), _)) => {
+                let mut elements = Vec::new();
+                while let Some((Ok(token), _)) = self.lexer.peek() {
+                    if token == &Token::RBracket { break; }
+                    elements.push(self.parse_expression(0)?);
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                self.expect(Token::RBracket)?;
+                ast::Expression::ArrayLiteral(elements)
+            },
+            Some((Ok(Token::LBrace), _)) => {
+                let mut pairs = Vec::new();
+                while let Some((Ok(token), _)) = self.lexer.peek() {
+                    if token == &Token::RBrace { break; }
+                    let key = self.parse_expression(0)?;
+                    self.expect(Token::Colon)?;
+                    let value = self.parse_expression(0)?;
+                    pairs.push((key, value));
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                self.expect(Token::RBrace)?;
+                ast::Expression::MapLiteral(pairs)
+            },
             _ => return Err(ParseError::UnexpectedToken("Expected expression".into())),
         };
 
@@ -369,6 +471,9 @@ impl<'a> Parser<'a> {
                     member,
                     is_safe,
                 };
+            } else if token == &Token::Question {
+                self.lexer.next(); // consume '?'
+                left = ast::Expression::ErrorPropagate(Box::new(left));
             } else {
                 break;
             }

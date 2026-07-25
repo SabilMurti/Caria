@@ -14,8 +14,21 @@ pub enum Statement {
     WhileStmt(WhileStmt),
     StructDecl(StructDecl),
     EnumDecl(EnumDecl),
+    ModDecl(ModDecl),
+    UseDecl(UseDecl),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct ModDecl {
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct UseDecl {
+    pub module: String,
+    pub is_npm: bool,
+    pub symbols: Vec<String>,
+}
 #[derive(Debug, PartialEq, Clone)]
 pub struct EnumDecl {
     pub name: String,
@@ -94,6 +107,9 @@ pub enum Expression {
         name: String,
         fields: Vec<(String, Expression)>,
     },
+    ArrayLiteral(Vec<Expression>),
+    MapLiteral(Vec<(Expression, Expression)>),
+    ErrorPropagate(Box<Expression>), // x?
     MemberAccess {
         object: Box<Expression>,
         member: String,
