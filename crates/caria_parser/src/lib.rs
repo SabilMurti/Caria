@@ -582,8 +582,13 @@ impl<'a> Parser<'a> {
                     Some((Ok(Token::Str(s)), _)) => s,
                     _ => return Err(ParseError::UnexpectedToken("query() expects a string literal SQL".into())),
                 };
+                let mut params = Vec::new();
+                while let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                    self.lexer.next(); // consume comma
+                    params.push(self.parse_expression(0)?);
+                }
                 self.expect(Token::RParen)?;
-                ast::Expression::QueryExpr { type_hint, sql }
+                ast::Expression::QueryExpr { type_hint, sql, params }
             },
             Some((Ok(Token::State), _)) => {
                 self.expect(Token::LParen)?;
@@ -593,43 +598,42 @@ impl<'a> Parser<'a> {
             },
             got => return Err(ParseError::UnexpectedToken(format!("Expected expression, got {:?}", got))),
         };
-        // Call Expression
-        if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume '('
-            let mut args = Vec::new();
-            while let Some((Ok(token), _)) = self.lexer.peek() {
-                if token == &Token::RParen { break; }
-                args.push(self.parse_expression(0)?);
-                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                    self.lexer.next();
+        // Postfix: calls, member access, error propagation (interleaved loop)
+        loop {
+            if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
+                self.lexer.next(); // consume '('
+                let mut args = Vec::new();
+                while let Some((Ok(token), _)) = self.lexer.peek() {
+                    if token == &Token::RParen { break; }
+                    args.push(self.parse_expression(0)?);
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
                 }
-            }
-            self.expect(Token::RParen)?;
-            left = ast::Expression::CallExpr {
-                callee: Box::new(left),
-                args,
-            };
-        }
-
-        // Struct instantiation
-
-        // Member access (Dot operator)
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            let is_safe = token == &Token::SafeChain;
-            if token == &Token::Dot || is_safe {
-                self.lexer.next(); // consume '.' or '?.'
-                let member = match self.lexer.next() {
-                    Some((Ok(Token::Ident(n)), _)) => n,
-                    _ => return Err(ParseError::UnexpectedToken("Expected property name".into())),
+                self.expect(Token::RParen)?;
+                left = ast::Expression::CallExpr {
+                    callee: Box::new(left),
+                    args,
                 };
-                left = ast::Expression::MemberAccess {
-                    object: Box::new(left),
-                    member,
-                    is_safe,
-                };
-            } else if token == &Token::Question {
-                self.lexer.next(); // consume '?'
-                left = ast::Expression::ErrorPropagate(Box::new(left));
+            } else if let Some((Ok(token), _)) = self.lexer.peek() {
+                let is_safe = token == &Token::SafeChain;
+                if token == &Token::Dot || is_safe {
+                    self.lexer.next(); // consume '.' or '?.'
+                    let member = match self.lexer.next() {
+                        Some((Ok(Token::Ident(n)), _)) => n,
+                        _ => return Err(ParseError::UnexpectedToken("Expected property name".into())),
+                    };
+                    left = ast::Expression::MemberAccess {
+                        object: Box::new(left),
+                        member,
+                        is_safe,
+                    };
+                } else if token == &Token::Question {
+                    self.lexer.next(); // consume '?'
+                    left = ast::Expression::ErrorPropagate(Box::new(left));
+                } else {
+                    break;
+                }
             } else {
                 break;
             }

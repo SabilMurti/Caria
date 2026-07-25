@@ -4,24 +4,35 @@ pub struct JsCodegen {
     output: String,
     indent_level: usize,
     app_initialized: bool,
+    needs_hono_serve: bool,
 }
-
 impl JsCodegen {
     pub fn new() -> Self {
         Self {
             output: String::new(),
             indent_level: 0,
             app_initialized: false,
+            needs_hono_serve: false,
         }
     }
 
     pub fn generate(&mut self, program: &Program) -> String {
         for stmt in &program.statements {
+            // Check if this is a ServeStmt or contains one (for import injection)
+            if matches!(stmt, Statement::ServeStmt(_)) {
+                self.needs_hono_serve = true;
+            }
+        }
+        for stmt in &program.statements {
             self.emit_statement(stmt);
             self.output.push('\n');
         }
+        if self.needs_hono_serve {
+            self.output.insert_str(0, "import { serve } from '@hono/node-server';\n");
+        }
         self.output.clone()
     }
+
 
     fn emit_statement(&mut self, stmt: &Statement) {
         match stmt {
@@ -45,7 +56,11 @@ impl JsCodegen {
             Statement::UseDecl(decl) => {
                 self.emit_indent();
                 if decl.is_npm {
-                    if decl.alias_import {
+                    // Hono exports named, not default
+                    // Hono exports named `Hono` (capital H), not `hono`
+                    if decl.module == "hono" {
+                        self.output.push_str(&format!("import {{ Hono }} from '{}';\n", decl.module));
+                    } else if decl.alias_import {
                         // use npm "pkg" as alias → import alias from 'pkg'
                         self.output.push_str(&format!("import {} from '{}';\n", decl.symbols[0], decl.module));
                     } else {
@@ -55,6 +70,7 @@ impl JsCodegen {
                         self.output.push_str(&format!(" }} from '{}';\n", decl.module));
                     }
                 } else {
+                    // Local module
                     self.output.push_str("import { ");
                     self.output.push_str(&decl.symbols.join(", "));
                     self.output.push_str(&format!(" }} from './{}.js';\n", decl.module.replace(".", "/")));
@@ -62,12 +78,13 @@ impl JsCodegen {
             }
             Statement::ExprStmt(expr) => {
                 self.emit_indent();
+                self.output.push_str("await ");
                 self.emit_expression(expr);
                 self.output.push(';');
             }
             Statement::RetStmt(expr) => {
                 self.emit_indent();
-                self.output.push_str("return ");
+                self.output.push_str("return await ");
                 self.emit_expression(expr);
                 self.output.push(';');
             }
@@ -95,22 +112,19 @@ impl JsCodegen {
             self.emit_statement(stmt);
             self.output.push('\n');
         }
-
         self.indent_level -= 1;
         self.emit_indent();
         self.output.push('}');
     }
-
     fn emit_let_stmt(&mut self, stmt: &LetStmt) {
         self.emit_indent();
-        self.output.push_str(&format!("const {} = ", stmt.name));
+        self.output.push_str(&format!("const {} = await ", stmt.name));
         self.emit_expression(&stmt.value);
         self.output.push(';');
     }
-
     fn emit_mut_stmt(&mut self, stmt: &MutStmt) {
         self.emit_indent();
-        self.output.push_str(&format!("let {} = ", stmt.name));
+        self.output.push_str(&format!("let {} = await ", stmt.name));
         self.emit_expression(&stmt.value);
         self.output.push(';');
     }
@@ -350,14 +364,14 @@ impl JsCodegen {
                     self.emit_indent();
                     match pat {
                         caria_parser::ast::Pattern::Wildcard => {
-                            self.output.push_str("return ");
+                            self.output.push_str("return await ");
                             self.emit_expression(result_expr);
                             self.output.push_str(";\n");
                         }
                         caria_parser::ast::Pattern::Literal(lit) => {
                             self.output.push_str("if (__m === ");
                             self.emit_expression(&Expression::Literal(lit.clone()));
-                            self.output.push_str(") return ");
+                            self.output.push_str(") return await ");
                             self.emit_expression(result_expr);
                             self.output.push_str(";\n");
                         }
@@ -376,7 +390,7 @@ impl JsCodegen {
                                     _ => self.output.push_str("true")
                                 }
                             }
-                            self.output.push_str(") return ");
+                            self.output.push_str(") return await ");
                             self.emit_expression(result_expr);
                             self.output.push_str(";\n");
                         }
@@ -469,7 +483,7 @@ impl JsCodegen {
                     self.emit_indent();
                     if i == expr.consequence.len() - 1 {
                         if let Statement::ExprStmt(e) = stmt {
-                            self.output.push_str("return ");
+                            self.output.push_str("return await ");
                             self.emit_expression(e);
                             self.output.push_str(";\n");
                             continue;
@@ -489,7 +503,7 @@ impl JsCodegen {
                         self.emit_indent();
                         if i == alternative.len() - 1 {
                             if let Statement::ExprStmt(e) = stmt {
-                                self.output.push_str("return ");
+                                self.output.push_str("return await ");
                                 self.emit_expression(e);
                                 self.output.push_str(";\n");
                                 continue;
@@ -506,10 +520,13 @@ impl JsCodegen {
                 self.indent_level -= 1;
                 self.emit_indent();
             }
-            Expression::QueryExpr { sql, .. } => {
-                // query<T>("SQL") → db.prepare("SQL").all()
-                // Parameters extracted at runtime
-                self.output.push_str(&format!("__db.prepare(`{}`).all()", sql));
+            Expression::QueryExpr { sql, params, .. } => {
+                self.output.push_str(&format!("db.prepare(`{}`).all(", sql));
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 { self.output.push_str(", "); }
+                    self.emit_expression(p);
+                }
+                self.output.push(')');
             }
             Expression::StateExpr { initial } => {
                 self.output.push_str("(function() { let __state = ");
@@ -539,11 +556,10 @@ impl JsCodegen {
         self.indent_level -= 1;
         self.output.push_str("});\n");
     }
-
     fn emit_serve_stmt(&mut self, stmt: &ServeStmt) {
-        // For Hono on Node: export default { port: N, fetch: app.fetch }
+        // For Hono + @hono/node-server
         self.output.push_str(&format!(
-            "\nexport default {{ port: {}, fetch: app.fetch }};\n",
+            "\nserve({{ fetch: app.fetch, port: {} }});\n",
             stmt.port
         ));
     }

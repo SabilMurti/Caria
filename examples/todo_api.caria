@@ -1,6 +1,8 @@
 // Calesteria Phase 3 Demo: Todo CRUD API
-// Runs on Hono + better-sqlite3 via Bun/Node
-// Build: calesteria build examples/todo_api.caria
+// Runs on Hono + better-sqlite3 via Node
+// Build:   calesteria build examples/todo_api.caria
+// Install: cd examples && npm install hono better-sqlite3
+// Run:     node examples/todo_api.js
 
 use npm "hono" as hono
 use npm "better-sqlite3" as Database
@@ -20,7 +22,7 @@ route GET "/todos" -> fn(c) {
 // GET /todos/:id — single todo
 route GET "/todos/:id" -> fn(c) {
     let id = c.req.param("id")
-    let todo = query<Todo>("SELECT * FROM todos WHERE id = ?")
+    let todo = query<Todo>("SELECT * FROM todos WHERE id = ?", id)
     ret c.json(todo)
 }
 
@@ -28,7 +30,7 @@ route GET "/todos/:id" -> fn(c) {
 route POST "/todos" -> fn(c) {
     let body = c.req.json()
     db.prepare("INSERT INTO todos (title) VALUES (?)").run(body.title)
-    ret c.json({ "message": "created" })
+    ret c.text("created")
 }
 
 // PUT /todos/:id — update
@@ -36,14 +38,14 @@ route PUT "/todos/:id" -> fn(c) {
     let id = c.req.param("id")
     let body = c.req.json()
     db.prepare("UPDATE todos SET done = ? WHERE id = ?").run(body.done, id)
-    ret c.json({ "message": "updated" })
+    ret c.text("updated")
 }
 
 // DELETE /todos/:id — delete
 route DELETE "/todos/:id" -> fn(c) {
     let id = c.req.param("id")
     db.prepare("DELETE FROM todos WHERE id = ?").run(id)
-    ret c.json({ "message": "deleted" })
+    ret c.text("deleted")
 }
 
 fn main() {

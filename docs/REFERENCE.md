@@ -30,7 +30,7 @@ calesteria build [file.caria]
 - If omitted, it reads `calesteria.toml` in the current directory and compiles the entry point.
 
 ### 3. Run File
-Compile and immediately execute a Calesteria file using the fastest available engine (Bun if installed, otherwise Node.js).
+Compile and immediately execute a Calesteria file using Node.js (default) or Bun.
 ```bash
 calesteria run <file.caria>
 ```
@@ -71,11 +71,12 @@ fn calculate_area(width: Int, height: Int) -> Int {
 ### 3. npm Interop & Imports
 Easily import packages from npm using namespace aliases (default imports) or named imports.
 ```calesteria
-// Default Import
+// Default Import (use npm "pkg" as alias)
 use npm "hono" as hono
+use npm "better-sqlite3" as Database
 
-// Named Import
-use npm "better-sqlite3" { Database }
+// Named Import (use npm "pkg" { Sym1, Sym2 })
+use npm "zod" { z }
 ```
 
 ### 4. HTTP Routing & Server
@@ -98,13 +99,17 @@ serve 3000
 ```
 
 ### 5. Database Queries
-Query databases using parameterized raw SQL queries containing optional generic return types.
+Query databases using parameterized raw SQL queries with optional type hints and interpolation parameters.
 ```calesteria
-// Query with generic return type Todo
+// Query with generic return type (returns array)
 let todos = query<Todo>("SELECT * FROM todos WHERE done = 0")
 
-// Query executing mutations
-db.prepare("INSERT INTO todos (title) VALUES (?)").run(title)
+// Parameterized query with bind parameters
+let todo = query<Todo>("SELECT * FROM todos WHERE id = ?", id)
+
+// Execute mutations via chaining
+db.prepare("INSERT INTO todos (title) VALUES (?)").run(body.title)
+db.prepare("UPDATE todos SET done = ? WHERE id = ?").run(body.done, id)
 ```
 
 ### 6. View DSL (JSX-style Templating)

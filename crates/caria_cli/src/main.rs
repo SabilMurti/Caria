@@ -111,8 +111,9 @@ serve 3000
 // ---------------------------------------------------------------------------
 fn cmd_build(file_path: &str) {
     let js = compile_file(file_path);
+    let final_js = format!("{js}\n\nif (typeof main === 'function') {{ await main(); }}\n");
     let out_path = file_path.replace(".caria", ".js");
-    fs::write(&out_path, &js).expect("Failed to write JS output");
+    fs::write(&out_path, &final_js).expect("Failed to write JS output");
     println!("Built: {out_path}");
 }
 
@@ -121,13 +122,15 @@ fn cmd_build(file_path: &str) {
 // ---------------------------------------------------------------------------
 fn cmd_run(file_path: &str) {
     let js = compile_file(file_path);
-    let final_js = format!("{js}\n\nif (typeof main === 'function') {{ main(); }}\n");
+    let final_js = format!("{js}\n\nif (typeof main === 'function') {{ await main(); }}\n");
 
-    let temp_js_path = format!("{}.js", file_path);
+    let temp_js_path = format!("{}.mjs", file_path);
     fs::write(&temp_js_path, &final_js).expect("Failed to write JS output");
 
-    // Try bun first (faster startup), fall back to node
-    let runtime = if Command::new("bun").arg("--version").output().is_ok() { "bun" } else { "node" };
+    // Node has better native module support (better-sqlite3 etc.)
+    // Bun as fallback if node isn't installed
+    let runtime = if Command::new("node").arg("--version").output().is_ok() { "node" } else { "bun" };
+
     let status = Command::new(runtime)
         .arg(&temp_js_path)
         .status()
@@ -139,6 +142,8 @@ fn cmd_run(file_path: &str) {
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
     }
+    // Clean up temporary .mjs file
+    let _ = fs::remove_file(&temp_js_path);
 }
 
 // ---------------------------------------------------------------------------

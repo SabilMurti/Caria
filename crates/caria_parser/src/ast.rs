@@ -159,6 +159,7 @@ pub enum Expression {
     QueryExpr {
         type_hint: Option<String>,   // T in query<T>(...)
         sql: String,
+        params: Vec<Expression>,     // interpolated parameters
     },
     StateExpr {
         initial: Box<Expression>,

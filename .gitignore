@@ -18,3 +18,9 @@ Thumbs.db
 # Env
 .env
 .env.*
+# Calesteria temp run output
+*.caria.mjs
+*.caria.js
+*.db
+todos.db
+node_modules/
