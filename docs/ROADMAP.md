@@ -187,50 +187,49 @@ fn main() {
 > **Effort:** 4-8 sessions
 
 ### Milestone 3.1 — HTTP Routing
-- [ ] `route GET "/path" -> handler` syntax
-- [ ] `route POST "/path" -> handler`
-- [ ] Route parameters: `route GET "/users/{id}" -> getUser`
-- [ ] `serve <port>` to start server
-- [ ] Request object: `req.params`, `req.query`, `req.body<T>()`
-- [ ] Response helpers: `json(data)`, `html(content)`, `error(code, msg)`
-- [ ] JS runtime: wraps Hono or Express
+- [x] `route GET "/path" -> handler` syntax
+- [x] `route POST "/path" -> handler`
+- [x] Route parameters: `route GET "/users/{id}" -> getUser`
+- [x] `serve <port>` to start server
+- [x] Request object: `req.params`, `req.query`, `req.body<T>()`
+- [x] Response helpers: `json(data)`, `html(content)`, `error(code, msg)`
+- [x] JS runtime: wraps Hono or Express
 
 ### Milestone 3.2 — Database Queries
-- [ ] `query<T>("SQL")` inline syntax
-- [ ] Auto-parameterization of interpolated values
-- [ ] Query builder syntax (structured alternative)
-- [ ] SQLite support via `better-sqlite3`
-- [ ] Connection config via `calesteria.toml`
+- [x] `query<T>("SQL")` inline syntax
+- [x] Auto-parameterization of interpolated values
+- [x] Query builder syntax (structured alternative)
+- [x] SQLite support via `better-sqlite3`
+- [x] Connection config via `calesteria.toml`
 
 ### Milestone 3.3 — View / UI DSL
-- [ ] `view Component(props) { ... }` syntax
-- [ ] HTML-in-code with `<tag>` syntax
-- [ ] Expression interpolation: `<p>{user.name}</p>`
-- [ ] Conditional rendering: `if cond { <tag /> }`
-- [ ] List rendering: `for item in items { <li>{item}</li> }`
-- [ ] `state(initial)` reactive state
-- [ ] Event handlers: `on:click={handler}`
-- [ ] Server-side rendering (SSR) by default
-- [ ] Client hydration for interactive islands
+- [x] `view Component(props) { ... }` syntax
+- [x] HTML-in-code with `<tag>` syntax
+- [x] Expression interpolation: `<p>{user.name}</p>`
+- [x] Conditional rendering: `if cond { <tag /> }`
+- [x] List rendering: `for item in items { <li>{item}</li> }`
+- [x] `state(initial)` reactive state
+- [x] Event handlers: `on:click={handler}`
+- [x] Server-side rendering (SSR) by default
+- [x] Client hydration for interactive islands
 
 ### Milestone 3.4 — npm Interop
-- [ ] `use npm "package" { named }` imports
-- [ ] `use npm "package" as alias` namespace import
-- [ ] npm packages installed via standard `npm install` or auto-resolved
-- [ ] Type boundary handling (npm returns → `Any` at boundary)
+- [x] `use npm "package" { named }` imports
+- [x] `use npm "package" as alias` namespace import
+- [x] npm packages installed via standard `npm install` or auto-resolved
+- [x] Type boundary handling (npm returns → `Any` at boundary)
 
 ### Milestone 3.5 — Implicit Async
-- [ ] Call graph analysis: identify I/O functions
-- [ ] Async propagation through call chain
-- [ ] Generate `async`/`await` in JS output
-- [ ] `@async` annotation for npm interop functions
+- [x] Call graph analysis: identify I/O functions
+- [x] Async propagation through call chain
+- [x] Generate `async`/`await` in JS output
+- [x] `@async` annotation for npm interop functions
 
 ### Milestone 3.6 — Project Scaffolding
-- [ ] `calesteria new <name>` creates project structure
-- [ ] Generated `calesteria.toml` with defaults
-- [ ] Generated `src/main.caria` with hello world
-- [ ] Generated `.gitignore`, `package.json` (for npm deps)
-
+- [x] `calesteria new <name>` creates project structure
+- [x] Generated `calesteria.toml` with defaults
+- [x] Generated `src/main.caria` with hello world
+- [x] Generated `.gitignore`, `package.json` (for npm deps)
 ### Demo Code (must work):
 ```
 // src/main.caria — Complete CRUD API in ~30 lines
