@@ -64,6 +64,7 @@ pub enum Token {
     #[token("??")] Coalesce,
     #[token("?")] Question,
     #[token("!")] Bang,
+    #[token("_", priority = 3)] Underscore,
     #[token(".")] Dot,
     #[token(",")] Comma,
     #[token(":")] Colon,

@@ -1,21 +1,20 @@
-fn main() {
-    let name = "Murtix"
-    mut count = 0
+mod myapp.core
 
-    while count < 3 {
-        print(name)
-        count = count + 1
+use npm "lodash-es" { debounce }
+use std.math { calculate }
+
+fn loadData() {
+    let raw = readFile("config.toml")?
+    
+    let options = {
+        "timeout": 3000,
+        "retries": 3
     }
 
-    let user = User {
-        name: "Sabil",
-        age: 17
-    }
-
-    print(user.name)
-}
-
-struct User {
-    name: Str,
-    age: Int
+    let items = [1, 2, 3, 4]
+    
+    let safeName = user?.profile?.name ?? "Guest"
+    
+    print(safeName)
+    ret raw
 }

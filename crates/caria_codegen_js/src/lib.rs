@@ -1,4 +1,4 @@
-use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt};
+use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt, ForStmt};
 
 pub struct JsCodegen {
     output: String,
@@ -29,6 +29,7 @@ impl JsCodegen {
             Statement::AssignStmt(stmt) => self.emit_assign_stmt(stmt),
             Statement::IfExpr(expr) => self.emit_if_expr(expr),
             Statement::WhileStmt(stmt) => self.emit_while_stmt(stmt),
+            Statement::ForStmt(stmt) => self.emit_for_stmt(stmt),
             Statement::StructDecl(decl) => self.emit_struct_decl(decl),
             Statement::EnumDecl(_) => {
                 // Enums in JS for Phase 2: just generate empty class or comments
@@ -55,12 +56,18 @@ impl JsCodegen {
                 self.emit_expression(expr);
                 self.output.push(';');
             }
+            Statement::RetStmt(expr) => {
+                self.emit_indent();
+                self.output.push_str("return ");
+                self.emit_expression(expr);
+                self.output.push(';');
+            }
         }
     }
 
     fn emit_fn_decl(&mut self, decl: &FnDecl) {
         self.emit_indent();
-        self.output.push_str(&format!("function {}() {{\n", decl.name));
+        self.output.push_str(&format!("async function {}() {{\n", decl.name));
         self.indent_level += 1;
 
         for stmt in &decl.body {
@@ -139,6 +146,25 @@ impl JsCodegen {
         self.output.push_str("while (");
         self.emit_expression(&stmt.condition);
         self.output.push_str(") {\n");
+        
+        self.indent_level += 1;
+        for body_stmt in &stmt.body {
+            self.emit_statement(body_stmt);
+            self.output.push('\n');
+        }
+        self.indent_level -= 1;
+        
+        self.emit_indent();
+        self.output.push('}');
+    }
+
+    fn emit_for_stmt(&mut self, stmt: &ForStmt) {
+        self.emit_indent();
+        self.output.push_str(&format!("for (let {} = ", stmt.var));
+        self.emit_expression(&stmt.start);
+        self.output.push_str(&format!("; {} < ", stmt.var));
+        self.emit_expression(&stmt.end);
+        self.output.push_str(&format!("; {}++) {{\n", stmt.var));
         
         self.indent_level += 1;
         for body_stmt in &stmt.body {
@@ -237,13 +263,82 @@ impl JsCodegen {
                 self.output.push_str("{ ");
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     if i > 0 { self.output.push_str(", "); }
-                    self.emit_expression(key);
+                    if let Expression::Literal(Literal::Str(s)) = key {
+                        self.output.push_str(&format!("\"{}\"", s));
+                    } else {
+                        self.output.push('[');
+                        self.emit_expression(key);
+                        self.output.push(']');
+                    }
                     self.output.push_str(": ");
                     self.emit_expression(value);
                 }
                 self.output.push_str(" }");
             }
+            Expression::MatchExpr { expr, arms } => {
+                self.output.push_str("(function() {\n");
+                self.indent_level += 1;
+                self.emit_indent();
+                
+                self.output.push_str("const __m = ");
+                self.emit_expression(expr);
+                self.output.push_str(";\n");
+                
+                for (pat, result_expr) in arms {
+                    self.emit_indent();
+                    match pat {
+                        caria_parser::ast::Pattern::Wildcard => {
+                            self.output.push_str("return ");
+                            self.emit_expression(result_expr);
+                            self.output.push_str(";\n");
+                        }
+                        caria_parser::ast::Pattern::Literal(lit) => {
+                            self.output.push_str("if (__m === ");
+                            self.emit_expression(&Expression::Literal(lit.clone()));
+                            self.output.push_str(") return ");
+                            self.emit_expression(result_expr);
+                            self.output.push_str(";\n");
+                        }
+                        caria_parser::ast::Pattern::Tuple(patterns) => {
+                            self.output.push_str("if (");
+                            for (i, p) in patterns.iter().enumerate() {
+                                if i > 0 { self.output.push_str(" && "); }
+                                match p {
+                                    caria_parser::ast::Pattern::Wildcard => {
+                                        self.output.push_str("true");
+                                    }
+                                    caria_parser::ast::Pattern::Literal(lit) => {
+                                        self.output.push_str(&format!("__m[{}] === ", i));
+                                        self.emit_expression(&Expression::Literal(lit.clone()));
+                                    }
+                                    _ => self.output.push_str("true")
+                                }
+                            }
+                            self.output.push_str(") return ");
+                            self.emit_expression(result_expr);
+                            self.output.push_str(";\n");
+                        }
+                    }
+                }
+                
+                self.emit_indent();
+                self.output.push_str("throw new Error('Non-exhaustive match');\n");
+                self.indent_level -= 1;
+                self.emit_indent();
+                self.output.push_str("})()");
+            }
             Expression::CallExpr { callee, args } => {
+                if let Expression::MemberAccess { object, member, is_safe } = &**callee {
+                    if member == "len" && args.is_empty() {
+                        self.emit_expression(object);
+                        if *is_safe {
+                            self.output.push_str("?.length");
+                        } else {
+                            self.output.push_str(".length");
+                        }
+                        return;
+                    }
+                }
                 self.emit_expression(callee);
                 self.output.push('(');
                 for (i, arg) in args.iter().enumerate() {

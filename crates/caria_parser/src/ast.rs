@@ -12,10 +12,12 @@ pub enum Statement {
     ExprStmt(Expression),
     IfExpr(IfExpr),
     WhileStmt(WhileStmt),
+    ForStmt(ForStmt),
     StructDecl(StructDecl),
     EnumDecl(EnumDecl),
     ModDecl(ModDecl),
     UseDecl(UseDecl),
+    RetStmt(Expression),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -48,6 +50,14 @@ pub struct WhileStmt {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct ForStmt {
+    pub var: String,
+    pub start: Box<Expression>,
+    pub end: Box<Expression>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct StructDecl {
     pub name: String,
     pub fields: Vec<StructField>,
@@ -64,6 +74,12 @@ pub struct IfExpr {
     pub condition: Box<Expression>,
     pub consequence: Vec<Statement>,
     pub alternative: Option<Vec<Statement>>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct LetStmt {
+    pub name: String,
+    pub value: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -93,12 +109,6 @@ pub struct FnParam {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct LetStmt {
-    pub name: String,
-    pub value: Expression,
-}
-
-#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Literal(Literal),
     Identifier(String),
@@ -114,6 +124,10 @@ pub enum Expression {
         object: Box<Expression>,
         member: String,
         is_safe: bool, // true for ?.
+    },
+    MatchExpr {
+        expr: Box<Expression>,
+        arms: Vec<(Pattern, Expression)>,
     },
     BinaryExpr {
         left: Box<Expression>,
@@ -151,4 +165,11 @@ pub enum BinaryOp {
     And,
     Or,
     Coalesce, // ??
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Pattern {
+    Literal(Literal),
+    Wildcard,
+    Tuple(Vec<Pattern>),
 }

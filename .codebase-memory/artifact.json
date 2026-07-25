@@ -1,0 +1,11 @@
+{
+    "schema_version": 2,
+    "commit": "679c0d564c5ceaa688a6a5eef800397f23a0c3ad",
+    "indexed_at": "2026-07-25T20:21:57Z",
+    "project": "Calesteria",
+    "nodes": 432,
+    "edges": 746,
+    "original_size": 1507328,
+    "compressed_size": 151964,
+    "compression_level": 9
+}

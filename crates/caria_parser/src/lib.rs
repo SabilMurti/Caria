@@ -37,12 +37,16 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Mut), _)) => self.parse_mut_stmt().map(ast::Statement::MutStmt),
             Some((Ok(Token::If), _)) => self.parse_if_expr().map(ast::Statement::IfExpr),
             Some((Ok(Token::While), _)) => self.parse_while_stmt().map(ast::Statement::WhileStmt),
+            Some((Ok(Token::For), _)) => self.parse_for_stmt().map(ast::Statement::ForStmt),
             Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
             Some((Ok(Token::Enum), _)) => self.parse_enum_decl().map(ast::Statement::EnumDecl),
             Some((Ok(Token::Mod), _)) => self.parse_mod_decl().map(ast::Statement::ModDecl),
             Some((Ok(Token::Use), _)) => self.parse_use_decl().map(ast::Statement::UseDecl),
+            Some((Ok(Token::Ret), _)) => {
+                self.lexer.next(); // consume ret
+                self.parse_expression(0).map(ast::Statement::RetStmt)
+            }
             Some((Ok(Token::Pub), _)) => {
-                // Lookahead for struct or enum
                 self.lexer.next(); // Consume pub
                 match self.lexer.peek() {
                     Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
@@ -73,37 +77,39 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Ident(name)), _)) => name,
             _ => return Err(ParseError::UnexpectedToken("Expected function name".into())),
         };
-
-        self.expect(Token::LParen)?;
-        
         let mut params = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RParen {
-                break;
+        let mut return_type = None;
+        let mut body = Vec::new();
+        
+        if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
+            self.lexer.next();
+            while let Some((Ok(token), _)) = self.lexer.peek() {
+                if token == &Token::RParen {
+                    break;
+                }
+                
+                let param_name = match self.lexer.next() {
+                    Some((Ok(Token::Ident(n)), _)) => n,
+                    _ => return Err(ParseError::UnexpectedToken("Expected parameter name".into())),
+                };
+                
+                self.expect(Token::Colon)?;
+                
+                let type_name = match self.lexer.next() {
+                    Some((Ok(Token::Ident(t)), _)) => t,
+                    _ => return Err(ParseError::UnexpectedToken("Expected type name".into())),
+                };
+                
+                params.push(ast::FnParam { name: param_name, type_name });
+                
+                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                    self.lexer.next();
+                }
             }
             
-            let param_name = match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => n,
-                _ => return Err(ParseError::UnexpectedToken("Expected parameter name".into())),
-            };
-            
-            self.expect(Token::Colon)?;
-            
-            let type_name = match self.lexer.next() {
-                Some((Ok(Token::Ident(t)), _)) => t,
-                _ => return Err(ParseError::UnexpectedToken("Expected type name".into())),
-            };
-            
-            params.push(ast::FnParam { name: param_name, type_name });
-            
-            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                self.lexer.next();
-            }
+            self.expect(Token::RParen)?;
         }
         
-        self.expect(Token::RParen)?;
-        
-        let mut return_type = None;
         if let Some((Ok(Token::Arrow), _)) = self.lexer.peek() {
             self.lexer.next(); // consume ->
             match self.lexer.next() {
@@ -114,7 +120,6 @@ impl<'a> Parser<'a> {
 
         self.expect(Token::LBrace)?;
 
-        let mut body = Vec::new();
         while let Some((Ok(token), _)) = self.lexer.peek() {
             if token == &Token::RBrace {
                 break;
@@ -139,6 +144,30 @@ impl<'a> Parser<'a> {
         self.expect(Token::RBrace)?;
         
         Ok(ast::WhileStmt { condition, body })
+    }
+
+    fn parse_for_stmt(&mut self) -> Result<ast::ForStmt, ParseError> {
+        self.expect(Token::For)?;
+        
+        let var = match self.lexer.next() {
+            Some((Ok(Token::Ident(name)), _)) => name,
+            _ => return Err(ParseError::UnexpectedToken("Expected variable name in for loop".into())),
+        };
+        
+        self.expect(Token::In)?;
+        let start = Box::new(self.parse_expression(0)?);
+        self.expect(Token::Range)?;
+        let end = Box::new(self.parse_expression(0)?);
+        
+        self.expect(Token::LBrace)?;
+        let mut body = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RBrace { break; }
+            body.push(self.parse_statement()?);
+        }
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::ForStmt { var, start, end, body })
     }
 
     fn parse_struct_decl(&mut self) -> Result<ast::StructDecl, ParseError> {
@@ -374,6 +403,34 @@ impl<'a> Parser<'a> {
     }
 
 
+    fn parse_pattern(&mut self) -> Result<ast::Pattern, ParseError> {
+        match self.lexer.next() {
+            Some((Ok(Token::Underscore), _)) => Ok(ast::Pattern::Wildcard),
+            Some((Ok(Token::Int(n)), _)) => Ok(ast::Pattern::Literal(ast::Literal::Int(n))),
+            Some((Ok(Token::Float(n)), _)) => Ok(ast::Pattern::Literal(ast::Literal::Float(n))),
+            Some((Ok(Token::Str(s)), _)) => Ok(ast::Pattern::Literal(ast::Literal::Str(s))),
+            Some((Ok(Token::Nil), _)) => Ok(ast::Pattern::Literal(ast::Literal::Nil)),
+            Some((Ok(token_val), _)) if token_val == Token::LParen || token_val == Token::LBracket => {
+                let is_array = token_val == Token::LBracket;
+                let mut tuple = Vec::new();
+                while let Some((Ok(token), _)) = self.lexer.peek() {
+                    if (is_array && token == &Token::RBracket) || (!is_array && token == &Token::RParen) { break; }
+                    tuple.push(self.parse_pattern()?);
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                if is_array {
+                    self.expect(Token::RBracket)?;
+                } else {
+                    self.expect(Token::RParen)?;
+                }
+                Ok(ast::Pattern::Tuple(tuple))
+            }
+            got => Err(ParseError::UnexpectedToken(format!("Expected pattern, got {:?}", got)))
+        }
+    }
+
     fn parse_expression(&mut self, min_bp: u8) -> Result<ast::Expression, ParseError> {
         let mut left = match self.lexer.next() {
             Some((Ok(Token::Int(val)), _)) => ast::Expression::Literal(ast::Literal::Int(val)),
@@ -381,6 +438,25 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Str(val)), _)) => ast::Expression::Literal(ast::Literal::Str(val)),
             Some((Ok(Token::Nil), _)) => ast::Expression::Literal(ast::Literal::Nil),
             Some((Ok(Token::Ident(name)), _)) => ast::Expression::Identifier(name),
+            Some((Ok(Token::Match), _)) => ast::Expression::MatchExpr {
+                expr: Box::new(self.parse_expression(0)?),
+                arms: {
+                    self.expect(Token::LBrace)?;
+                    let mut arms = Vec::new();
+                    while let Some((Ok(token), _)) = self.lexer.peek() {
+                        if token == &Token::RBrace { break; }
+                        let pat = self.parse_pattern()?;
+                        self.expect(Token::Arrow)?;
+                        let expr = self.parse_expression(0)?;
+                        arms.push((pat, expr));
+                        if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                            self.lexer.next();
+                        }
+                    }
+                    self.expect(Token::RBrace)?;
+                    arms
+                }
+            },
             Some((Ok(Token::LBracket), _)) => {
                 let mut elements = Vec::new();
                 while let Some((Ok(token), _)) = self.lexer.peek() {
@@ -408,10 +484,9 @@ impl<'a> Parser<'a> {
                 self.expect(Token::RBrace)?;
                 ast::Expression::MapLiteral(pairs)
             },
-            _ => return Err(ParseError::UnexpectedToken("Expected expression".into())),
+            got => return Err(ParseError::UnexpectedToken(format!("Expected expression, got {:?}", got))),
         };
-
-        // Simple check for CallExpr (e.g. print(x))
+        // Call Expression
         if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
             self.lexer.next(); // consume '('
             let mut args = Vec::new();
@@ -422,6 +497,7 @@ impl<'a> Parser<'a> {
                     self.lexer.next();
                 }
             }
+            self.expect(Token::RParen)?;
             left = ast::Expression::CallExpr {
                 callee: Box::new(left),
                 args,
@@ -429,33 +505,6 @@ impl<'a> Parser<'a> {
         }
 
         // Struct instantiation
-        if let ast::Expression::Identifier(ref name) = left {
-            // Heuristic for Phase 2: If we see Ident followed by {, we assume struct instantiation
-            if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
-                self.lexer.next(); // consume '{'
-                let mut fields = Vec::new();
-                while let Some((Ok(token), _)) = self.lexer.peek() {
-                    if token == &Token::RBrace { break; }
-                    
-                    let field_name = match self.lexer.next() {
-                        Some((Ok(Token::Ident(n)), _)) => n,
-                        _ => return Err(ParseError::UnexpectedToken("Expected field name in struct inst".into())),
-                    };
-                    
-                    self.expect(Token::Colon)?;
-                    let value = self.parse_expression(0)?;
-                    fields.push((field_name, value));
-                    
-                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                    }
-                }
-                self.expect(Token::RBrace)?;
-                left = ast::Expression::StructInst {
-                    name: name.clone(),
-                    fields,
-                };
-            }
-        }
 
         // Member access (Dot operator)
         while let Some((Ok(token), _)) = self.lexer.peek() {
