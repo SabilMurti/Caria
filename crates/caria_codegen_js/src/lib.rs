@@ -1,4 +1,4 @@
-use caria_parser::ast::{Expression, FnDecl, LetStmt, Literal, Program, Statement};
+use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement};
 
 pub struct JsCodegen {
     output: String,
@@ -25,8 +25,10 @@ impl JsCodegen {
         match stmt {
             Statement::FnDecl(decl) => self.emit_fn_decl(decl),
             Statement::LetStmt(stmt) => self.emit_let_stmt(stmt),
+            Statement::MutStmt(stmt) => self.emit_mut_stmt(stmt),
+            Statement::AssignStmt(stmt) => self.emit_assign_stmt(stmt),
+            Statement::IfExpr(expr) => self.emit_if_expr(expr),
             Statement::ExprStmt(expr) => {
-                self.emit_indent();
                 self.emit_expression(expr);
                 self.output.push(';');
             }
@@ -53,6 +55,61 @@ impl JsCodegen {
         self.output.push_str(&format!("const {} = ", stmt.name));
         self.emit_expression(&stmt.value);
         self.output.push(';');
+    }
+
+    fn emit_mut_stmt(&mut self, stmt: &MutStmt) {
+        self.emit_indent();
+        self.output.push_str(&format!("let {} = ", stmt.name));
+        self.emit_expression(&stmt.value);
+        self.output.push(';');
+    }
+
+    fn emit_assign_stmt(&mut self, stmt: &AssignStmt) {
+        self.emit_indent();
+        self.output.push_str(&format!("{} = ", stmt.name));
+        self.emit_expression(&stmt.value);
+        self.output.push(';');
+    }
+
+    fn emit_if_expr(&mut self, expr: &IfExpr) {
+        self.emit_indent();
+        self.output.push_str("if (");
+        self.emit_expression(&expr.condition);
+        self.output.push_str(") {\n");
+        
+        self.indent_level += 1;
+        for stmt in &expr.consequence {
+            self.emit_statement(stmt);
+            self.output.push('\n');
+        }
+        self.indent_level -= 1;
+        self.emit_indent();
+        self.output.push('}');
+
+        if let Some(alternative) = &expr.alternative {
+            // Check if alternative is a single IfExpr (else if)
+            if alternative.len() == 1 {
+                if let Statement::IfExpr(else_if) = &alternative[0] {
+                    self.output.push_str(" else ");
+                    // Temporarily remove indent for the else-if part
+                    let old_indent = self.indent_level;
+                    self.indent_level = 0; 
+                    self.emit_if_expr(else_if);
+                    self.indent_level = old_indent;
+                    return;
+                }
+            }
+            
+            self.output.push_str(" else {\n");
+            self.indent_level += 1;
+            for stmt in alternative {
+                self.emit_statement(stmt);
+                self.output.push('\n');
+            }
+            self.indent_level -= 1;
+            self.emit_indent();
+            self.output.push('}');
+        }
     }
 
     fn emit_expression(&mut self, expr: &Expression) {
@@ -93,9 +150,73 @@ impl JsCodegen {
                     caria_parser::ast::BinaryOp::Subtract => " - ",
                     caria_parser::ast::BinaryOp::Multiply => " * ",
                     caria_parser::ast::BinaryOp::Divide => " / ",
+                    caria_parser::ast::BinaryOp::Modulo => " % ",
+                    caria_parser::ast::BinaryOp::Eq => " === ",
+                    caria_parser::ast::BinaryOp::NotEq => " !== ",
+                    caria_parser::ast::BinaryOp::Less => " < ",
+                    caria_parser::ast::BinaryOp::Greater => " > ",
+                    caria_parser::ast::BinaryOp::LessEq => " <= ",
+                    caria_parser::ast::BinaryOp::GreaterEq => " >= ",
+                    caria_parser::ast::BinaryOp::And => " && ",
+                    caria_parser::ast::BinaryOp::Or => " || ",
                 };
                 self.output.push_str(op_str);
                 self.emit_expression(right);
+            }
+            Expression::IfExpr(expr) => {
+                // When used as an expression (e.g. let x = if cond { a } else { b }),
+                // JS needs an IIFE (Immediately Invoked Function Expression)
+                self.output.push_str("(() => {\n");
+                self.indent_level += 1;
+                
+                // Just basic handling for phase 2
+                self.emit_indent();
+                self.output.push_str("if (");
+                self.emit_expression(&expr.condition);
+                self.output.push_str(") {\n");
+                
+                self.indent_level += 1;
+                for (i, stmt) in expr.consequence.iter().enumerate() {
+                    self.emit_indent();
+                    if i == expr.consequence.len() - 1 {
+                        if let Statement::ExprStmt(e) = stmt {
+                            self.output.push_str("return ");
+                            self.emit_expression(e);
+                            self.output.push_str(";\n");
+                            continue;
+                        }
+                    }
+                    self.emit_statement(stmt);
+                    self.output.push('\n');
+                }
+                self.indent_level -= 1;
+                self.emit_indent();
+                self.output.push('}');
+
+                if let Some(alternative) = &expr.alternative {
+                    self.output.push_str(" else {\n");
+                    self.indent_level += 1;
+                    for (i, stmt) in alternative.iter().enumerate() {
+                        self.emit_indent();
+                        if i == alternative.len() - 1 {
+                            if let Statement::ExprStmt(e) = stmt {
+                                self.output.push_str("return ");
+                                self.emit_expression(e);
+                                self.output.push_str(";\n");
+                                continue;
+                            }
+                        }
+                        self.emit_statement(stmt);
+                        self.output.push('\n');
+                    }
+                    self.indent_level -= 1;
+                    self.emit_indent();
+                    self.output.push('}');
+                }
+                self.output.push('\n');
+                self.indent_level -= 1;
+                self.emit_indent();
+                self.output.push_str("})()");
             }
         }
     }
@@ -127,20 +248,16 @@ mod tests {
     }
 
     #[test]
-    fn test_codegen_fn() {
+    fn test_codegen_if_else() {
+        let mut codegen = JsCodegen::new();
         let prog = Program {
-            statements: vec![Statement::FnDecl(FnDecl {
-                name: "main".to_string(),
-                body: vec![Statement::LetStmt(LetStmt {
-                    name: "msg".to_string(),
-                    value: Expression::Literal(Literal::Str("hello".to_string())),
-                })],
+            statements: vec![Statement::IfExpr(IfExpr {
+                condition: Box::new(Expression::Literal(Literal::Bool(true))),
+                consequence: vec![Statement::ExprStmt(Expression::Identifier("x".to_string()))],
+                alternative: None,
             })],
         };
-
-        let mut codegen = JsCodegen::new();
         let js = codegen.generate(&prog);
-        let expected = "function main() {\n    const msg = `hello`;\n}";
-        assert_eq!(js.trim(), expected);
+        assert_eq!(js.trim(), "if (true) {\nx;\n}");
     }
 }

@@ -1,4 +1,12 @@
 fn main() {
-    let name = "Calesteria"
-    print(name)
+    let name = "Sabil"
+    mut age = 17
+
+    if age >= 18 {
+        print("Adult")
+    } else {
+        print("Minor")
+    }
+    
+    age = age + 1
 }
