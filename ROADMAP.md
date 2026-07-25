@@ -14,32 +14,35 @@
 
 ## Phase 3: Web Server & Data Layer ✓ (v0.3.0)
 ### Routing & HTTP
-- Route declarations: `route GET "/path" -> fn(c) { ... }`
-- HTTP methods: GET, POST, PUT, DELETE, PATCH
-- Serve statement: `serve <port>`
-- Hono.js integration with automatic app initialization
+- ✓ Route declarations: `route GET "/path" -> fn(c) { ... }`
+- ✓ HTTP methods: GET, POST, PUT, DELETE, PATCH
+- ✓ Serve statement: `serve <port>`
+- ✓ Hono.js integration with automatic app initialization
 
 ### Database & Queries
-- `query<T>("SQL")` syntax with optional generic type annotation
-- better-sqlite3 integration (JS codegen emits `.prepare().all()`)
-- `calesteria.toml` config parsing (name, entry, mode, port)
+- ✓ `query<T>("SQL")` syntax with optional generic type annotation
+- ✓ better-sqlite3 integration (JS codegen emits `.prepare().all()`)
+- ✓ `calesteria.toml` config parsing (name, entry, mode, port)
 
 ### View DSL & Reactive State
-- View components: `view Component(props) { ... }`
-- HTML-in-code: `<tag attr={expr}>children</tag>`
-- Control flow in templates: `{for item in collection { ... }}`, `{if condition { ... }}`
-- Reactive state: `state(initial_value)`
+- ✓ View components: `view Component(props) { ... }`
+- ✓ HTML-in-code: `<tag attr={expr}>children</tag>`
+- ✓ Control flow in templates: `{for item in collection { ... }}`, `{if condition { ... }}`
+- ✓ Reactive state: `state(initial_value)`
 
 ### CLI & Build Pipeline
-- `calesteria new <name>` — scaffold new server project
-- `calesteria build <file>` — compile .caria to .js
-- `calesteria run <file>` — compile and execute
-- npm imports with `use npm "pkg" as alias` (default import)
-- Named imports: `use npm "pkg" { Sym1, Sym2 }`
-- Implicit async: all functions emit `async`
+- ✓ `calesteria new <name>` — scaffold new server project
+- ✓ `calesteria build <file>` — compile .caria to .js
+- ✓ `calesteria run <file>` — compile and execute
+- ✓ npm imports with `use npm "pkg" as alias` (default import)
+- ✓ Named imports: `use npm "pkg" { Sym1, Sym2 }`
+- ✓ Implicit async: all functions emit `async`
+- ✓ Postfix chaining: member access + calls (`c.text(...)`)
+- ✓ Hono named import special case: `import { Hono } from 'hono'`
 
 ### Demo
-- `examples/todo_api.caria` — CRUD API skeleton showing routes, queries, and serve
+- ✓ `examples/todo_api.caria` — CRUD API skeleton showing routes, queries, and serve
+- ✓ Live server test: `calesteria new todo_server` scaffolds, compiles, runs on localhost:3000
 
 ---
 
