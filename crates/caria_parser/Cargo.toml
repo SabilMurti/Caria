@@ -4,3 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+caria_lexer = { path = "../caria_lexer" }

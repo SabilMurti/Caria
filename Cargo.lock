@@ -39,6 +39,9 @@ dependencies = [
 [[package]]
 name = "caria_parser"
 version = "0.1.0"
+dependencies = [
+ "caria_lexer",
+]
 
 [[package]]
 name = "fnv"
