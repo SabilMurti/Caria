@@ -45,8 +45,8 @@ fn main() {
     let mut codegen = JsCodegen::new();
     let js_output = codegen.generate(&program);
 
-    // In a real app we'd auto-call `main()`. For now, we inject it.
-    let final_js = format!("{}\n\nmain();", js_output);
+    // In a real app we'd auto-call `main()`. For now, we inject it conditionally.
+    let final_js = format!("{}\n\nif (typeof main === 'function') {{ main(); }}", js_output);
 
     // 5. Write to temp file
     let temp_js_path = format!("{}.js", file_path);
