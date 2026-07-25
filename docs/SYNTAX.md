@@ -1,7 +1,7 @@
 # Calesteria — Syntax Quick Reference
 
 > Complete syntax reference for the Calesteria programming language.
-> Extension: `.caria` | Keywords: ~30 | Statement forms: ~15
+> Extension: `.caria` | Keywords: ~30 | Statement forms: ~16
 
 ---
 
@@ -11,7 +11,7 @@
 fn    let   mut   ret   pub   mod   use
 if    else  match for   while in    break
 struct enum  trait impl  self  as    is
-route view  query serve state
+route view  query serve state concurrent
 nil   true  false and   or    not
 ```
 
@@ -19,7 +19,7 @@ nil   true  false and   or    not
 
 ## 1. Variables & Bindings
 
-```
+```caria
 // Immutable (default)
 let name = "Sabil"
 let age: Int = 17
@@ -49,7 +49,7 @@ let [first, ...rest] = items
 
 ## 3. Collection Types
 
-```
+```caria
 // List
 let nums: List<Int> = [1, 2, 3]
 let first = nums.get(0)         // -> Int?
@@ -69,9 +69,9 @@ let tags: Set<Str> = #{"rust", "lang", "compiler"}
 
 ---
 
-## 4. Functions
+## 4. Functions & Concurrency
 
-```
+```caria
 // Standard function
 fn add(a: Int, b: Int) -> Int {
   ret a + b
@@ -95,13 +95,23 @@ fn first<T>(list: List<T>) -> T? = list.get(0)
 let square = |x: Int| -> Int { x * x }
 let inc = |x| x + 1        // type inferred, single-expr
 items.filter(|item| item.active)
+
+// Concurrent Execution (Parallel Async Execution)
+fn loadDashboardData(userId: Int) {
+  // Executes promises concurrently in parallel (Promise.all equivalent)
+  let [user, posts, stats] = concurrent [
+    getUser(userId),
+    getUserPosts(userId),
+    getSystemStats()
+  ]
+}
 ```
 
 ---
 
 ## 5. Control Flow
 
-```
+```caria
 // If-else (expression — returns a value)
 let status = if age >= 18 { "adult" } else { "minor" }
 
@@ -147,10 +157,15 @@ while running {
 
 ---
 
-## 6. Structs
+## 6. Structs & Eloquent-style ORM Models
 
-```
-// Definition
+```caria
+// Standard Struct Definition
+pub struct Point {
+  x: Int
+  y: Int
+}
+
 pub struct User {
   id: Int
   name: Str
@@ -178,13 +193,60 @@ impl User {
     self.active = false
   }
 }
+
+// Eloquent-Style Database Model Definition
+@table("users")
+@timestamps   // Auto manages created_at & updated_at
+@soft_delete  // Auto manages deleted_at
+pub struct DbUser {
+  @primary_key
+  id: Int
+  name: Str
+  email: Str
+
+  @has_many(foreign_key: "user_id")
+  posts: List<Post>?
+}
+
+@table("posts")
+pub struct Post {
+  @primary_key
+  id: Int
+  title: Str
+  user_id: Int
+
+  @belongs_to(foreign_key: "user_id")
+  author: DbUser?
+}
+
+// Eloquent ORM Usage
+fn handleUserOperations() {
+  // Find by primary key
+  let user = DbUser.find(1)?
+
+  // Fluent Query Builder
+  let activeUsers = DbUser.where("active", true)
+                          .where("role", "admin")
+                          .orderBy("created_at", "desc")
+                          .get()
+
+  // Eager Loading (Solves N+1 problem)
+  let usersWithPosts = DbUser.with("posts").get()
+
+  // Active Record Create & Save
+  mut newUser = DbUser { name: "Sabil", email: "sabil@example.com" }
+  newUser.save()
+
+  // Soft Delete
+  newUser.delete()
+}
 ```
 
 ---
 
 ## 7. Enums
 
-```
+```caria
 // Simple enum
 pub enum Color {
   Red
@@ -212,7 +274,7 @@ let area = match s {
 
 ## 8. Traits
 
-```
+```caria
 // Definition
 pub trait Displayable {
   fn display(self) -> Str
@@ -235,7 +297,7 @@ fn printAll<T: Displayable>(items: List<T>) {
 
 ## 9. Null Safety
 
-```
+```caria
 // Nullable type: T?
 let name: Str? = nil
 
@@ -259,7 +321,7 @@ let forced = name!
 
 ## 10. Error Handling
 
-```
+```caria
 // Functions that can fail
 fn readFile(path: Str) -> Result<Str, IOError> { ... }
 
@@ -285,7 +347,7 @@ ret Err(MyError { message: "something broke" })
 
 ## 11. Modules & Imports
 
-```
+```caria
 // Module declaration (top of file)
 mod myapp.models
 
@@ -304,7 +366,7 @@ use npm "zod" as z
 
 ## 12. String Interpolation
 
-```
+```caria
 let name = "Calesteria"
 let msg = "Hello, {name}!"                          // simple
 let calc = "Result: {2 + 3}"                        // expression
@@ -317,9 +379,9 @@ let multi = "
 
 ---
 
-## 13. Web Primitives
+## 13. Web Primitives & Automatic Input Validation
 
-```
+```caria
 // Routes
 route GET "/api/users" -> listUsers
 route POST "/api/users" -> createUser
@@ -327,16 +389,19 @@ route GET "/api/users/{id}" -> getUser
 route PUT "/api/users/{id}" -> updateUser
 route DELETE "/api/users/{id}" -> deleteUser
 
-// Handler function
-fn listUsers(req: Request) -> Response {
-  let users = query<List<User>>("SELECT * FROM users")
-  ret json(users)
+// Handler function with automatic runtime schema validation
+fn createUser(req: Request) -> Response {
+  // Compiler generates automatic runtime schema validation for CreateUserInput
+  // Automatically returns HTTP 400 Bad Request if the request payload doesn't match
+  let input = req.body<CreateUserInput>()
+  let user = query<User>("INSERT INTO users (name, email) VALUES ({input.name}, {input.email}) RETURNING *")
+  ret json(user, status: 201)
 }
 
 // Request object
 req.params.id          // route parameter
 req.query.page         // query string ?page=2
-req.body<T>()          // parse body as type T
+req.body<T>()          // parse body as type T (with auto validation)
 req.headers.get("Authorization")
 
 // Response helpers
@@ -354,7 +419,7 @@ serve 3000
 
 ## 14. Database Queries
 
-```
+```caria
 // Inline query (type-safe, auto-parameterized)
 let users = query<List<User>>("SELECT * FROM users WHERE active = true")
 let user = query<User?>("SELECT * FROM users WHERE id = {id}")
@@ -374,7 +439,7 @@ let results = query<List<User>> {
 
 ## 15. Views (UI DSL)
 
-```
+```caria
 // Component definition
 pub view UserCard(user: User) {
   <div class="card">
@@ -411,10 +476,15 @@ fn homePage(req: Request) -> Response {
 
 ## 16. Annotations
 
-```
+```caria
 // Documentation
 /// Returns the sum of two integers
 fn add(a: Int, b: Int) -> Int = a + b
+
+// Resilience Annotations
+@timeout(5000) // Timeout after 5 seconds
+@retry(3)      // Retry up to 3 times on failure
+fn fetchExternalPayment() -> Result<PaymentStatus, Error> { ... }
 
 // AI intent description
 @describe("Fetches paginated active users sorted by most recent")
@@ -453,7 +523,7 @@ use npm "node-fetch" { fetch }
 
 ## 18. Pipe Operator
 
-```
+```caria
 // Transform chaining (left-to-right)
 let result = data
   |> parseJson
@@ -468,7 +538,7 @@ let result = data
 
 ## 19. Tests
 
-```
+```caria
 // Test blocks (inline, same file)
 test "addition works" {
   assertEq(add(2, 3), 5)
@@ -490,7 +560,7 @@ test "error handling" {
 
 ## 20. CLI Apps
 
-```
+```caria
 use cli { arg, flag, command }
 
 command "greet" {

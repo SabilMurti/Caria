@@ -1,0 +1,20 @@
+# Build artifacts
+/target/
+**/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Seiza
+/skills/
+
+# Env
+.env
+.env.*

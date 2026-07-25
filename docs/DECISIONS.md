@@ -248,3 +248,52 @@ Everything before `[IR]` is shared. Each backend only implements codegen from IR
 **Tradeoff:** Opinionated. Users can't choose their own router library. Accepted because the target audience (vibecoders) prefers convention over configuration.
 
 **Escape hatch:** `use npm` allows importing any JS library for cases where built-ins aren't sufficient.
+
+---
+
+## ADR-012: `concurrent` Construct for Parallel Async Execution
+
+**Date:** 2026-07-25  
+**Status:** Accepted  
+**Context:** Implicit async executes operations sequentially without requiring `await`. However, developers need an explicit mechanism to execute multiple asynchronous operations concurrently (in parallel).
+
+### Decision: `concurrent [ task1(), task2() ]` construct
+
+**Rationale:**
+1. **Zero function coloring preserved:** Avoids introducing `async/await` syntax.
+2. **Explicit intent:** Communicates to both compiler and LLM that tasks in the block should run concurrently (transpiles to `Promise.all` in JavaScript).
+3. **Determinism:** LLMs have a clear, single construct to invoke parallel tasks.
+
+---
+
+## ADR-013: Automatic Runtime Schema Validation for Request Bodies
+
+**Date:** 2026-07-25  
+**Status:** Accepted  
+**Context:** When receiving dynamic HTTP payloads via `req.body<T>()`, static type checking alone cannot guarantee runtime type safety in JavaScript.
+
+### Decision: Auto-generate runtime structural guards on `req.body<T>()`
+
+**Rationale:**
+1. **Zero manual validation code:** Eliminates the need for external schema validation libraries like Zod or Yup in standard web handlers.
+2. **Security by default:** Prevents invalid payloads from passing deeper into backend logic.
+3. **Automatic HTTP 400:** Unmatched payloads trigger a structured JSON error response automatically.
+
+---
+
+## ADR-014: Native Eloquent-Style ORM Primitives
+
+**Date:** 2026-07-25  
+**Status:** Accepted  
+**Context:** While raw SQL and builder blocks (`query`) exist, developers frequently require high-level ORM patterns (ActiveRecord, relationships, scopes, soft deletes, eager loading) to speed up backend development without writing redundant SQL boilerplate.
+
+### Decision: Provide compile-time generated Eloquent-style methods on `@table` structs
+
+1. **ActiveRecord Methods:** Structs with `@table` automatically gain `find()`, `where()`, `.save()`, and `.delete()`.
+2. **Declarative Relations:** Supported via `@has_many`, `@belongs_to`, and `@has_one` annotations.
+3. **Eager Loading:** `.with("relation")` syntax to prevent N+1 queries.
+4. **Automatic Attributes:** `@timestamps` and `@soft_delete` managed at the compiler/runtime level.
+
+### Rationale:
+- **LLM-Friendly:** Highly readable, declarative syntax reduces context token size compared to heavy OOP class setup.
+- **Zero Runtime Reflection Overhead:** Code-generated during Calesteria-to-JS transpilation for optimal execution speed.

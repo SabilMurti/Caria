@@ -1,0 +1,1 @@
+//! Lexical analysis for the Calesteria compiler.

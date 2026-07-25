@@ -1,0 +1,1 @@
+//! Error and diagnostic reporting for the Calesteria compiler.

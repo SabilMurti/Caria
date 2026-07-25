@@ -1,0 +1,10 @@
+[package]
+name = "caria_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+caria_lexer = { path = "../caria_lexer" }
+caria_parser = { path = "../caria_parser" }
+caria_codegen_js = { path = "../caria_codegen_js" }
+caria_diagnostic = { path = "../caria_diagnostic" }

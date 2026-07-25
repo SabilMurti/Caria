@@ -105,7 +105,10 @@ let area = match shape {
 let name: Str? = nil
 let upper = name?.toUpper()
 let safe = name ?? "default"
-match name { some(n) -> use(n), nil -> fallback() }
+match name {
+  n: Str -> use(n)
+  nil -> fallback()
+}
 ```
 
 ### Error Handling
@@ -169,17 +172,18 @@ test "math works" {
 ```
 
 ## Calesteria → JavaScript Mapping
-| Calesteria | JavaScript |
-|-----------|-----------|
-| `fn name()` | `function name()` / `async function name()` |
-| `let x = v` | `const x = v` |
-| `mut x = v` | `let x = v` |
-| `ret val` | `return val` |
-| `"{expr}"` | `` `${expr}` `` |
-| `struct S {}` | `class S { constructor() {} }` |
-| `match v {}` | `switch(v)` or if-else chain |
-| `x?.m()` | `x?.m()` |
-| `x ?? d` | `x ?? d` |
-| `route GET` | `router.get(...)` |
-| `query<T>(sql)` | `await db.query(sql, params)` |
-| `serve N` | `app.listen(N)` |
+| Calesteria      | JavaScript                                  |
+| -----------------| ---------------------------------------------|
+| `fn name()`     | `function name()` / `async function name()` |
+| `let x = v`     | `const x = v`                               |
+| `mut x = v`     | `let x = v`                                 |
+| `ret val`       | `return val`                                |
+| `"{expr}"`      | `` `${expr}` ``                             |
+| `struct S {}`   | `class S { constructor() {} }`              |
+| `match v {}`    | `switch(v)` or if-else chain                |
+| `x?.m()`        | `x?.m()`                                    |
+| `x ?? d`        | `x ?? d`                                    |
+| `state(v)`      | Reactive Signal / State Proxy               |
+| `route GET`     | `router.get(...)`                           |
+| `query<T>(sql)` | `await db.query(sql, params)`               |
+| `serve N`       | `app.listen(N)`                             |
