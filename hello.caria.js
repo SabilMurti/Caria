@@ -1,12 +1,18 @@
 function main() {
-    const name = `Sabil`;
-    let age = 17;
-    if (age >= 18) {
-console.log(`Adult`);
-    } else {
-console.log(`Minor`);
+    const name = `Murtix`;
+    let count = 0;
+    while (count < 3) {
+console.log(name);
+        count = count + 1;
     }
-    age = age + 1;
+    const user = new User({ name: `Sabil`, age: 17 });
+console.log(user.name);
+}
+class User {
+    constructor({ name, age }) {
+        this.name = name;
+        this.age = age;
+    }
 }
 
 

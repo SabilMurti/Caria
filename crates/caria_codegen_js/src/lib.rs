@@ -1,4 +1,4 @@
-use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement};
+use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt};
 
 pub struct JsCodegen {
     output: String,
@@ -28,6 +28,8 @@ impl JsCodegen {
             Statement::MutStmt(stmt) => self.emit_mut_stmt(stmt),
             Statement::AssignStmt(stmt) => self.emit_assign_stmt(stmt),
             Statement::IfExpr(expr) => self.emit_if_expr(expr),
+            Statement::WhileStmt(stmt) => self.emit_while_stmt(stmt),
+            Statement::StructDecl(decl) => self.emit_struct_decl(decl),
             Statement::ExprStmt(expr) => {
                 self.emit_expression(expr);
                 self.output.push(';');
@@ -111,26 +113,83 @@ impl JsCodegen {
             self.output.push('}');
         }
     }
+    fn emit_while_stmt(&mut self, stmt: &WhileStmt) {
+        self.emit_indent();
+        self.output.push_str("while (");
+        self.emit_expression(&stmt.condition);
+        self.output.push_str(") {\n");
+        
+        self.indent_level += 1;
+        for body_stmt in &stmt.body {
+            self.emit_statement(body_stmt);
+            self.output.push('\n');
+        }
+        self.indent_level -= 1;
+        
+        self.emit_indent();
+        self.output.push('}');
+    }
+
+    fn emit_struct_decl(&mut self, decl: &StructDecl) {
+        self.emit_indent();
+        self.output.push_str(&format!("class {} {{\n", decl.name));
+        self.indent_level += 1;
+        
+        self.emit_indent();
+        self.output.push_str("constructor({ ");
+        for (i, field) in decl.fields.iter().enumerate() {
+            if i > 0 { self.output.push_str(", "); }
+            self.output.push_str(&field.name);
+        }
+        self.output.push_str(" }) {\n");
+        
+        self.indent_level += 1;
+        for field in &decl.fields {
+            self.emit_indent();
+            self.output.push_str(&format!("this.{} = {};\n", field.name, field.name));
+        }
+        self.indent_level -= 1;
+        
+        self.emit_indent();
+        self.output.push_str("}\n");
+        
+        self.indent_level -= 1;
+        self.emit_indent();
+        self.output.push('}');
+    }
+
 
     fn emit_expression(&mut self, expr: &Expression) {
         match expr {
             Expression::Literal(Literal::Int(val)) => self.output.push_str(&val.to_string()),
             Expression::Literal(Literal::Float(val)) => self.output.push_str(&val.to_string()),
             Expression::Literal(Literal::Str(val)) => {
-                // In a real implementation we would handle escaping.
-                // For Phase 1, we just emit template literals to handle potential interpolation later.
                 self.output.push_str(&format!("`{}`", val));
             }
             Expression::Literal(Literal::Bool(val)) => {
                 self.output.push_str(if *val { "true" } else { "false" })
             }
             Expression::Identifier(name) => {
-                // Hardcode standard library translation for Phase 1 `print` -> `console.log`
                 if name == "print" {
                     self.output.push_str("console.log");
                 } else {
                     self.output.push_str(name);
                 }
+            }
+            Expression::StructInst { name, fields } => {
+                self.output.push_str(&format!("new {}({{ ", name));
+                for (i, (field_name, value)) in fields.iter().enumerate() {
+                    if i > 0 { self.output.push_str(", "); }
+                    self.output.push_str(field_name);
+                    self.output.push_str(": ");
+                    self.emit_expression(value);
+                }
+                self.output.push_str(" })");
+            }
+            Expression::MemberAccess { object, member } => {
+                self.emit_expression(object);
+                self.output.push('.');
+                self.output.push_str(member);
             }
             Expression::CallExpr { callee, args } => {
                 self.emit_expression(callee);
@@ -164,12 +223,9 @@ impl JsCodegen {
                 self.emit_expression(right);
             }
             Expression::IfExpr(expr) => {
-                // When used as an expression (e.g. let x = if cond { a } else { b }),
-                // JS needs an IIFE (Immediately Invoked Function Expression)
                 self.output.push_str("(() => {\n");
                 self.indent_level += 1;
                 
-                // Just basic handling for phase 2
                 self.emit_indent();
                 self.output.push_str("if (");
                 self.emit_expression(&expr.condition);
@@ -219,7 +275,7 @@ impl JsCodegen {
                 self.output.push_str("})()");
             }
         }
-    }
+            }
 
     fn emit_indent(&mut self) {
         for _ in 0..self.indent_level {
@@ -228,7 +284,6 @@ impl JsCodegen {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
     use caria_parser::ast::*;

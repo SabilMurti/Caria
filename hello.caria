@@ -1,12 +1,21 @@
 fn main() {
-    let name = "Sabil"
-    mut age = 17
+    let name = "Murtix"
+    mut count = 0
 
-    if age >= 18 {
-        print("Adult")
-    } else {
-        print("Minor")
+    while count < 3 {
+        print(name)
+        count = count + 1
     }
-    
-    age = age + 1
+
+    let user = User {
+        name: "Sabil",
+        age: 17
+    }
+
+    print(user.name)
+}
+
+struct User {
+    name: Str,
+    age: Int
 }
