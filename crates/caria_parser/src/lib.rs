@@ -79,16 +79,35 @@ impl<'a> Parser<'a> {
         Ok(ast::LetStmt { name, value })
     }
 
+
     fn parse_expression(&mut self) -> Result<ast::Expression, ParseError> {
-        match self.lexer.next() {
-            Some((Ok(Token::Int(val)), _)) => Ok(ast::Expression::Literal(ast::Literal::Int(val))),
-            Some((Ok(Token::Float(val)), _)) => Ok(ast::Expression::Literal(ast::Literal::Float(val))),
-            Some((Ok(Token::Str(val)), _)) => Ok(ast::Expression::Literal(ast::Literal::Str(val))),
-            Some((Ok(Token::True), _)) => Ok(ast::Expression::Literal(ast::Literal::Bool(true))),
-            Some((Ok(Token::False), _)) => Ok(ast::Expression::Literal(ast::Literal::Bool(false))),
-            Some((Ok(Token::Ident(name)), _)) => Ok(ast::Expression::Identifier(name)),
-            _ => Err(ParseError::UnexpectedToken("Expected expression".into())),
+        let mut left = match self.lexer.next() {
+            Some((Ok(Token::Int(val)), _)) => ast::Expression::Literal(ast::Literal::Int(val)),
+            Some((Ok(Token::Float(val)), _)) => ast::Expression::Literal(ast::Literal::Float(val)),
+            Some((Ok(Token::Str(val)), _)) => ast::Expression::Literal(ast::Literal::Str(val)),
+            Some((Ok(Token::True), _)) => ast::Expression::Literal(ast::Literal::Bool(true)),
+            Some((Ok(Token::False), _)) => ast::Expression::Literal(ast::Literal::Bool(false)),
+            Some((Ok(Token::Ident(name)), _)) => ast::Expression::Identifier(name),
+            _ => return Err(ParseError::UnexpectedToken("Expected expression".into())),
+        };
+
+        // Simple check for CallExpr (e.g. print(x))
+        if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume '('
+            let mut args = Vec::new();
+            if let Some((Ok(token), _)) = self.lexer.peek() {
+                if token != &Token::RParen {
+                    args.push(self.parse_expression()?);
+                }
+            }
+            self.expect(Token::RParen)?;
+            left = ast::Expression::CallExpr {
+                callee: Box::new(left),
+                args,
+            };
         }
+        
+        Ok(left)
     }
 
     fn expect(&mut self, expected: Token) -> Result<(), ParseError> {
@@ -102,7 +121,7 @@ impl<'a> Parser<'a> {
             None => Err(ParseError::UnexpectedEOF("Unexpected EOF".into())),
         }
     }
-}
+    }
 
 #[cfg(test)]
 mod tests {

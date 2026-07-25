@@ -8,3 +8,5 @@ caria_lexer = { path = "../caria_lexer" }
 caria_parser = { path = "../caria_parser" }
 caria_codegen_js = { path = "../caria_codegen_js" }
 caria_diagnostic = { path = "../caria_diagnostic" }
+
+# We don't strictly need more features for Phase 1 MVP

@@ -24,6 +24,9 @@ dependencies = [
 [[package]]
 name = "caria_codegen_js"
 version = "0.1.0"
+dependencies = [
+ "caria_parser",
+]
 
 [[package]]
 name = "caria_diagnostic"
