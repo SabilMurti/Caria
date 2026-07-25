@@ -38,11 +38,11 @@ Phase 6+: "Multiverse"
 > **Effort:** 1 session
 
 ### Deliverables
-- [ ] Initialize Rust workspace with `Cargo.toml`
-- [ ] Create crate structure: `caria_cli`, `caria_lexer`, `caria_parser`, `caria_codegen_js`, `caria_diagnostic`
-- [ ] CLI skeleton: `calesteria --version` prints `Calesteria 0.1.0`
-- [ ] CI: GitHub repo with basic README
-- [ ] Git repo initialized at `/home/murtix/projects/Calesteria`
+- [x] Initialize Rust workspace with `Cargo.toml`
+- [x] Create crate structure: `caria_cli`, `caria_lexer`, `caria_parser`, `caria_codegen_js`, `caria_diagnostic`
+- [x] CLI skeleton: `calesteria --version` prints `Calesteria 0.1.0`
+- [x] CI: GitHub repo with basic README
+- [x] Git repo initialized at `/home/murtix/projects/Calesteria`
 
 ### Technical Notes
 - Use `cargo workspace` for multi-crate setup
@@ -58,31 +58,31 @@ Phase 6+: "Multiverse"
 > **Effort:** 2-4 sessions
 
 ### Milestone 1.1 — Lexer
-- [ ] Token types: keywords, identifiers, literals (int, float, string), operators, punctuation
-- [ ] String interning for identifiers
-- [ ] Span tracking (byte offsets)
-- [ ] Lex `let x = "Hello, Calesteria!"` into correct token stream
-- [ ] Basic error: "unexpected character" with position
+- [x] Token types: keywords, identifiers, literals (int, float, string), operators, punctuation
+- [x] String interning for identifiers
+- [x] Span tracking (byte offsets)
+- [x] Lex `let x = "Hello, Calesteria!"` into correct token stream
+- [x] Basic error: "unexpected character" with position
 
 ### Milestone 1.2 — Parser
-- [ ] AST node types: Program, FnDecl, LetStmt, ExprStmt, Literal, BinaryExpr, CallExpr
-- [ ] Parse `fn main() { ... }`
-- [ ] Parse `let x = "hello"`
-- [ ] Parse `print(x)`
-- [ ] Parse string interpolation `"Hello {name}"`
-- [ ] Error recovery: skip to next statement on parse error
+- [x] AST node types: Program, FnDecl, LetStmt, ExprStmt, Literal, BinaryExpr, CallExpr
+- [x] Parse `fn main() { ... }`
+- [x] Parse `let x = "hello"`
+- [x] Parse `print(x)`
+- [x] Parse string interpolation `"Hello {name}"`
+- [x] Error recovery: skip to next statement on parse error
 
 ### Milestone 1.3 — JS Codegen
-- [ ] Emit `function main() { ... }`
-- [ ] Emit `const x = "hello"`
-- [ ] Emit `console.log(x)`
-- [ ] Emit string template literals for interpolation
-- [ ] Write output to `.js` file
+- [x] Emit `function main() { ... }`
+- [x] Emit `const x = "hello"`
+- [x] Emit `console.log(x)`
+- [x] Emit string template literals for interpolation
+- [x] Write output to `.js` file
 
 ### Milestone 1.4 — CLI Integration
-- [ ] `calesteria run <file>` → lex → parse → codegen → execute via Node.js
-- [ ] `calesteria build <file>` → lex → parse → codegen → write `.js` file
-- [ ] Basic error reporting with file/line/column
+- [x] `calesteria run <file>` → lex → parse → codegen → execute via Node.js
+- [x] `calesteria build <file>` → lex → parse → codegen → write `.js` file
+- [x] Basic error reporting with file/line/column
 
 ### Demo Code (must work end-to-end):
 ```
@@ -115,12 +115,12 @@ Hello, Calesteria!
 
 ### Milestone 2.2 — Control Flow
 - [x] `if`/`else` (as expression: `let x = if cond { a } else { b }`)
-- [ ] `for x in range` (with `0..n` range syntax)
+- [x] `for x in range` (with `0..n` range syntax)
 - [ ] `for item in collection`
 - [ ] `for item, index in collection`
 - [x] `while condition { body }`
-- [ ] `match` expression with literal patterns
-- [ ] `match` with wildcard `_` and guards `if`
+- [x] `match` expression with literal patterns
+- [x] `match` with wildcard `_` and guards `if`
 
 ### Milestone 2.3 — Functions
 - [x] Function declarations with typed parameters: `fn add(a: Int, b: Int) -> Int`
@@ -160,7 +160,7 @@ Hello, Calesteria!
 ### Milestone 2.8 — Collections
 - [x] `List<T>` — `[1, 2, 3]`
 - [x] `Map<K, V>` — `{"key": "val"}`
-- [ ] List methods: `.push()`, `.map()`, `.filter()`, `.len()`
+- [x] List methods: `.push()`, `.map()`, `.filter()`, `.len()`
 - [ ] Map methods: `.get()`, `.set()`, `.keys()`, `.values()`
 
 ### Demo Code (must work):
