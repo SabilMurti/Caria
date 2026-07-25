@@ -37,7 +37,7 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::Mut), _)) => self.parse_mut_stmt().map(ast::Statement::MutStmt),
             Some((Ok(Token::If), _)) => self.parse_if_expr().map(ast::Statement::IfExpr),
             Some((Ok(Token::While), _)) => self.parse_while_stmt().map(ast::Statement::WhileStmt),
-            Some((Ok(Token::For), _)) => self.parse_for_stmt().map(ast::Statement::ForStmt),
+            Some((Ok(Token::For), _)) => self.parse_for_stmt(),
             Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
             Some((Ok(Token::Enum), _)) => self.parse_enum_decl().map(ast::Statement::EnumDecl),
             Some((Ok(Token::Mod), _)) => self.parse_mod_decl().map(ast::Statement::ModDecl),
@@ -99,8 +99,13 @@ impl<'a> Parser<'a> {
                     Some((Ok(Token::Ident(t)), _)) => t,
                     _ => return Err(ParseError::UnexpectedToken("Expected type name".into())),
                 };
+                let mut default_value = None;
+                if let Some((Ok(Token::Eq), _)) = self.lexer.peek() {
+                    self.lexer.next(); // consume '='
+                    default_value = Some(self.parse_expression(0)?);
+                }
                 
-                params.push(ast::FnParam { name: param_name, type_name });
+                params.push(ast::FnParam { name: param_name, type_name, default_value });
                 
                 if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
                     self.lexer.next();
@@ -118,16 +123,23 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect(Token::LBrace)?;
+        if let Some((Ok(Token::Eq), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume '='
+            let expr = self.parse_expression(0)?;
+            body.push(ast::Statement::RetStmt(expr));
+        } else {
+            self.expect(Token::LBrace)?;
 
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RBrace {
-                break;
+            while let Some((Ok(token), _)) = self.lexer.peek() {
+                if token == &Token::RBrace {
+                    break;
+                }
+                body.push(self.parse_statement()?);
             }
-            body.push(self.parse_statement()?);
-        }
 
-        self.expect(Token::RBrace)?;
+            self.expect(Token::RBrace)?;
+        }
+        
         Ok(ast::FnDecl { name, params, return_type, body })
     }
 
@@ -146,18 +158,34 @@ impl<'a> Parser<'a> {
         Ok(ast::WhileStmt { condition, body })
     }
 
-    fn parse_for_stmt(&mut self) -> Result<ast::ForStmt, ParseError> {
+    fn parse_for_stmt(&mut self) -> Result<ast::Statement, ParseError> {
         self.expect(Token::For)?;
         
-        let var = match self.lexer.next() {
+        let var1 = match self.lexer.next() {
             Some((Ok(Token::Ident(name)), _)) => name,
             _ => return Err(ParseError::UnexpectedToken("Expected variable name in for loop".into())),
         };
+
+        let mut var2 = None;
+        if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume ','
+            match self.lexer.next() {
+                Some((Ok(Token::Ident(name)), _)) => var2 = Some(name),
+                _ => return Err(ParseError::UnexpectedToken("Expected index variable name".into())),
+            }
+        }
         
         self.expect(Token::In)?;
-        let start = Box::new(self.parse_expression(0)?);
-        self.expect(Token::Range)?;
-        let end = Box::new(self.parse_expression(0)?);
+        let first_expr = self.parse_expression(0)?;
+        
+        let mut is_range = false;
+        let mut end_expr = None;
+        
+        if let Some((Ok(Token::Range), _)) = self.lexer.peek() {
+            self.lexer.next(); // consume '..'
+            is_range = true;
+            end_expr = Some(self.parse_expression(0)?);
+        }
         
         self.expect(Token::LBrace)?;
         let mut body = Vec::new();
@@ -167,7 +195,14 @@ impl<'a> Parser<'a> {
         }
         self.expect(Token::RBrace)?;
         
-        Ok(ast::ForStmt { var, start, end, body })
+        if is_range {
+            if var2.is_some() {
+                return Err(ParseError::UnexpectedToken("Range loop cannot have an index variable".into()));
+            }
+            Ok(ast::Statement::ForStmt(ast::ForStmt { var: var1, start: Box::new(first_expr), end: Box::new(end_expr.unwrap()), body }))
+        } else {
+            Ok(ast::Statement::ForInStmt(ast::ForInStmt { item_var: var1, index_var: var2, collection: Box::new(first_expr), body }))
+        }
     }
 
     fn parse_struct_decl(&mut self) -> Result<ast::StructDecl, ParseError> {
@@ -433,6 +468,33 @@ impl<'a> Parser<'a> {
 
     fn parse_expression(&mut self, min_bp: u8) -> Result<ast::Expression, ParseError> {
         let mut left = match self.lexer.next() {
+            Some((Ok(Token::Bar), _)) => {
+                let mut params = Vec::new();
+                while let Some((Ok(token), _)) = self.lexer.peek() {
+                    if token == &Token::Bar { break; }
+                    match self.lexer.next() {
+                        Some((Ok(Token::Ident(name)), _)) => params.push(name),
+                        _ => return Err(ParseError::UnexpectedToken("Expected parameter name in closure".into())),
+                    }
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                self.expect(Token::Bar)?;
+                
+                let mut body = Vec::new();
+                if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
+                    self.lexer.next();
+                    while let Some((Ok(token), _)) = self.lexer.peek() {
+                        if token == &Token::RBrace { break; }
+                        body.push(self.parse_statement()?);
+                    }
+                    self.expect(Token::RBrace)?;
+                } else {
+                    body.push(ast::Statement::RetStmt(self.parse_expression(0)?));
+                }
+                ast::Expression::ClosureExpr { params, body }
+            },
             Some((Ok(Token::Int(val)), _)) => ast::Expression::Literal(ast::Literal::Int(val)),
             Some((Ok(Token::Float(val)), _)) => ast::Expression::Literal(ast::Literal::Float(val)),
             Some((Ok(Token::Str(val)), _)) => ast::Expression::Literal(ast::Literal::Str(val)),

@@ -41,6 +41,13 @@ fn main() {
         }
     };
 
+    // 3.5 Typecheck
+    let mut typechecker = caria_diagnostic::typecheck::TypeChecker::new();
+    if let Err(e) = typechecker.check_program(&program) {
+        println!("Type Error: {}", e.message);
+        std::process::exit(1);
+    }
+
     // 4. Codegen
     let mut codegen = JsCodegen::new();
     let js_output = codegen.generate(&program);

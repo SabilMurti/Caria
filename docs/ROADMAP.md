@@ -109,25 +109,25 @@ Hello, Calesteria!
 - [x] Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - [x] Logical: `and`, `or`, `not`
 - [x] Type literals: `Int`, `Float`, `Str`, `Bool`
-- [ ] Type inference for `let` bindings
+- [x] Type inference for `let` bindings
 - [x] Mutable bindings: `mut x = 0`
 - [x] Assignment: `x = x + 1`
 
 ### Milestone 2.2 — Control Flow
 - [x] `if`/`else` (as expression: `let x = if cond { a } else { b }`)
 - [x] `for x in range` (with `0..n` range syntax)
-- [ ] `for item in collection`
-- [ ] `for item, index in collection`
+- [x] `for item in collection`
+- [x] `for item, index in collection`
 - [x] `while condition { body }`
 - [x] `match` expression with literal patterns
 - [x] `match` with wildcard `_` and guards `if`
 
 ### Milestone 2.3 — Functions
 - [x] Function declarations with typed parameters: `fn add(a: Int, b: Int) -> Int`
-- [ ] Return type inference (when unambiguous)
-- [ ] Single-expression functions: `fn double(x: Int) -> Int = x * 2`
-- [ ] Default parameters: `fn greet(name: Str, greeting: Str = "Hello")`
-- [ ] Closures: `|x| { x + 1 }`
+- [x] Return type inference (when unambiguous)
+- [x] Single-expression functions: `fn double(x: Int) -> Int = x * 2`
+- [x] Default parameters: `fn greet(name: Str, greeting: Str = "Hello")`
+- [x] Closures: `|x| { x + 1 }`
 
 ### Milestone 2.4 — Data Structures
 - [x] Structs: `struct User { name: Str, age: Int }`
@@ -143,7 +143,7 @@ Hello, Calesteria!
 - [x] `?.` safe chaining
 - [x] `??` null coalescing
 - [x] `match` with `some(val)` / `nil` patterns
-- [ ] Compiler error when using `T?` without null check
+- [x] Compiler error when using `T?` without null check
 
 ### Milestone 2.6 — Error Handling
 - [x] `Result<T, E>` type
@@ -161,7 +161,7 @@ Hello, Calesteria!
 - [x] `List<T>` — `[1, 2, 3]`
 - [x] `Map<K, V>` — `{"key": "val"}`
 - [x] List methods: `.push()`, `.map()`, `.filter()`, `.len()`
-- [ ] Map methods: `.get()`, `.set()`, `.keys()`, `.values()`
+- [x] Map methods: `.get()`, `.set()`, `.keys()`, `.values()`
 
 ### Demo Code (must work):
 ```

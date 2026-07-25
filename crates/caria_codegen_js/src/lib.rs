@@ -1,4 +1,4 @@
-use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt, ForStmt};
+use caria_parser::ast::{AssignStmt, Expression, FnDecl, IfExpr, LetStmt, Literal, MutStmt, Program, Statement, StructDecl, WhileStmt, ForStmt, ForInStmt};
 
 pub struct JsCodegen {
     output: String,
@@ -30,6 +30,7 @@ impl JsCodegen {
             Statement::IfExpr(expr) => self.emit_if_expr(expr),
             Statement::WhileStmt(stmt) => self.emit_while_stmt(stmt),
             Statement::ForStmt(stmt) => self.emit_for_stmt(stmt),
+            Statement::ForInStmt(stmt) => self.emit_for_in_stmt(stmt),
             Statement::StructDecl(decl) => self.emit_struct_decl(decl),
             Statement::EnumDecl(_) => {
                 // Enums in JS for Phase 2: just generate empty class or comments
@@ -67,7 +68,16 @@ impl JsCodegen {
 
     fn emit_fn_decl(&mut self, decl: &FnDecl) {
         self.emit_indent();
-        self.output.push_str(&format!("async function {}() {{\n", decl.name));
+        self.output.push_str(&format!("async function {}(", decl.name));
+        for (i, param) in decl.params.iter().enumerate() {
+            if i > 0 { self.output.push_str(", "); }
+            self.output.push_str(&param.name);
+            if let Some(default_val) = &param.default_value {
+                self.output.push_str(" = ");
+                self.emit_expression(default_val);
+            }
+        }
+        self.output.push_str(") {\n");
         self.indent_level += 1;
 
         for stmt in &decl.body {
@@ -177,6 +187,34 @@ impl JsCodegen {
         self.output.push('}');
     }
 
+    fn emit_for_in_stmt(&mut self, stmt: &ForInStmt) {
+        self.emit_indent();
+        if let Some(index_var) = &stmt.index_var {
+            // Try arrays first (entries returns iterator of [index, value]), fallback to Object.entries for objects
+            self.output.push_str(&format!("for (const [{}, {}] of (Array.isArray(", index_var, stmt.item_var));
+            self.emit_expression(&stmt.collection);
+            self.output.push_str(") ? ");
+            self.emit_expression(&stmt.collection);
+            self.output.push_str(".entries() : Object.entries(");
+            self.emit_expression(&stmt.collection);
+            self.output.push_str("))) {\n");
+        } else {
+            self.output.push_str(&format!("for (const {} of ", stmt.item_var));
+            self.emit_expression(&stmt.collection);
+            self.output.push_str(") {\n");
+        }
+        
+        self.indent_level += 1;
+        for body_stmt in &stmt.body {
+            self.emit_statement(body_stmt);
+            self.output.push('\n');
+        }
+        self.indent_level -= 1;
+        
+        self.emit_indent();
+        self.output.push('}');
+    }
+
     fn emit_struct_decl(&mut self, decl: &StructDecl) {
         self.emit_indent();
         self.output.push_str(&format!("class {} {{\n", decl.name));
@@ -209,6 +247,19 @@ impl JsCodegen {
     fn emit_expression(&mut self, expr: &Expression) {
         match expr {
             Expression::Literal(Literal::Int(val)) => self.output.push_str(&val.to_string()),
+            Expression::ClosureExpr { params, body } => {
+                self.output.push_str("async (");
+                self.output.push_str(&params.join(", "));
+                self.output.push_str(") => {\n");
+                self.indent_level += 1;
+                for stmt in body {
+                    self.emit_statement(stmt);
+                    self.output.push('\n');
+                }
+                self.indent_level -= 1;
+                self.emit_indent();
+                self.output.push('}');
+            }
             Expression::Literal(Literal::Float(val)) => self.output.push_str(&val.to_string()),
             Expression::Literal(Literal::Str(val)) => {
                 self.output.push_str(&format!("`{}`", val));
@@ -336,6 +387,31 @@ impl JsCodegen {
                         } else {
                             self.output.push_str(".length");
                         }
+                        return;
+                    } else if member == "get" && args.len() == 1 {
+                        self.emit_expression(object);
+                        if *is_safe { self.output.push_str("?."); }
+                        self.output.push('[');
+                        self.emit_expression(&args[0]);
+                        self.output.push(']');
+                        return;
+                    } else if member == "set" && args.len() == 2 {
+                        self.output.push('(');
+                        self.emit_expression(object);
+                        self.output.push('[');
+                        self.emit_expression(&args[0]);
+                        self.output.push_str("] = ");
+                        self.emit_expression(&args[1]);
+                        self.output.push(')');
+                        return;
+                    } else if (member == "keys" || member == "values") && args.is_empty() {
+                        if member == "keys" {
+                            self.output.push_str("Object.keys(");
+                        } else {
+                            self.output.push_str("Object.values(");
+                        }
+                        self.emit_expression(object);
+                        self.output.push(')');
                         return;
                     }
                 }

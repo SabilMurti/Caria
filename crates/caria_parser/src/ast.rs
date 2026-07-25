@@ -13,6 +13,7 @@ pub enum Statement {
     IfExpr(IfExpr),
     WhileStmt(WhileStmt),
     ForStmt(ForStmt),
+    ForInStmt(ForInStmt),
     StructDecl(StructDecl),
     EnumDecl(EnumDecl),
     ModDecl(ModDecl),
@@ -54,6 +55,14 @@ pub struct ForStmt {
     pub var: String,
     pub start: Box<Expression>,
     pub end: Box<Expression>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ForInStmt {
+    pub item_var: String,
+    pub index_var: Option<String>,
+    pub collection: Box<Expression>,
     pub body: Vec<Statement>,
 }
 
@@ -106,12 +115,17 @@ pub struct FnDecl {
 pub struct FnParam {
     pub name: String,
     pub type_name: String,
+    pub default_value: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Literal(Literal),
     Identifier(String),
+    ClosureExpr {
+        params: Vec<String>,
+        body: Vec<Statement>,
+    },
     IfExpr(IfExpr),
     StructInst {
         name: String,

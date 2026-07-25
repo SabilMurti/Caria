@@ -59,6 +59,7 @@ pub enum Token {
     #[token("->")] Arrow,
     #[token("=>")] FatArrow,
     #[token("|>")] Pipe,
+    #[token("|")] Bar,
     #[token("..")] Range,
     #[token("?.")] SafeChain,
     #[token("??")] Coalesce,
