@@ -247,6 +247,37 @@ Everything before `[IR]` is shared. Each backend only implements codegen from IR
 
 **Tradeoff:** Opinionated. Users can't choose their own router library. Accepted because the target audience (vibecoders) prefers convention over configuration.
 
+## ADR-012: The Package Ecosystem and Compilation Targets
+
+**Date:** 2026-07-26
+**Status:** Accepted
+**Context:** Need to decide how Calesteria interacts with external libraries (like npm or Composer) across different compilation targets (JS vs Native).
+
+### Options Considered
+
+| Option | Pros | Cons |
+|--------|------|------|
+| A. Universal FFI (Embed JS/PHP engines in Native) | Can use npm/Composer anywhere | Massive binary bloat, terrible performance, huge complexity |
+| B. Transpile ONLY to JS forever | Easy ecosystem (npm) | Can never achieve true native speed (Go/Rust level) |
+| C. Target-Specific Ecosystems | Max performance, clean architecture | Splits the ecosystem, requires rebuilding libraries for Native |
+
+### Decision: Option C — Target-Specific Ecosystems + "The Grand Adventure"
+
+Calesteria will embrace **Target-Specific Ecosystems**, similar to Kotlin (Kotlin/JS vs Kotlin/Native) or Rust (Native vs WASM).
+
+1. **Target Web/JS (`--target=js`)**:
+   - Calesteria acts as a superior, AI-first language transpiling to JS.
+   - **Ecosystem:** First-class `npm` support via `use npm "name"`.
+   - **Why:** Instant access to 4 million packages. Vibecoders can build full-stack web apps immediately without waiting for a Calesteria-native ecosystem to mature.
+
+2. **Target Native (`--target=native`)**:
+   - Calesteria compiles directly to machine code (Phase 6+).
+   - **Ecosystem:** Will NOT support npm/Composer. It will require a **Native Calesteria Ecosystem**.
+   - **The Grand Adventure:** We will build our own standard library (`std`) and core packages from scratch. For complex needs (like cryptography or graphics), we will provide FFI bindings to C/Rust libraries, NOT JavaScript.
+
+**Rationale:**
+Attempting to bridge JavaScript runtimes into native web servers negates the entire performance benefit of going native. If someone wants native speed for the web (like Go/Rust), they need native libraries. This opens up an exciting long-term roadmap where the Calesteria community (or AI agents) slowly builds out a high-performance, AI-optimized native ecosystem over time.
+
 **Escape hatch:** `use npm` allows importing any JS library for cases where built-ins aren't sufficient.
 
 ---
