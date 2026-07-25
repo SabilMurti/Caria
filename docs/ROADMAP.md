@@ -105,36 +105,36 @@ Hello, Calesteria!
 > **Effort:** 4-8 sessions
 
 ### Milestone 2.1 — Core Types & Expressions
-- [ ] Arithmetic operators: `+`, `-`, `*`, `/`, `%`
-- [ ] Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- [ ] Logical: `and`, `or`, `not`
-- [ ] Type literals: `Int`, `Float`, `Str`, `Bool`
+- [x] Arithmetic operators: `+`, `-`, `*`, `/`, `%`
+- [x] Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- [x] Logical: `and`, `or`, `not`
+- [x] Type literals: `Int`, `Float`, `Str`, `Bool`
 - [ ] Type inference for `let` bindings
-- [ ] Mutable bindings: `mut x = 0`
-- [ ] Assignment: `x = x + 1`
+- [x] Mutable bindings: `mut x = 0`
+- [x] Assignment: `x = x + 1`
 
 ### Milestone 2.2 — Control Flow
-- [ ] `if`/`else` (as expression: `let x = if cond { a } else { b }`)
+- [x] `if`/`else` (as expression: `let x = if cond { a } else { b }`)
 - [ ] `for x in range` (with `0..n` range syntax)
 - [ ] `for item in collection`
 - [ ] `for item, index in collection`
-- [ ] `while condition { body }`
+- [x] `while condition { body }`
 - [ ] `match` expression with literal patterns
 - [ ] `match` with wildcard `_` and guards `if`
 
 ### Milestone 2.3 — Functions
-- [ ] Function declarations with typed parameters: `fn add(a: Int, b: Int) -> Int`
+- [x] Function declarations with typed parameters: `fn add(a: Int, b: Int) -> Int`
 - [ ] Return type inference (when unambiguous)
 - [ ] Single-expression functions: `fn double(x: Int) -> Int = x * 2`
 - [ ] Default parameters: `fn greet(name: Str, greeting: Str = "Hello")`
 - [ ] Closures: `|x| { x + 1 }`
 
 ### Milestone 2.4 — Data Structures
-- [ ] Structs: `struct User { name: Str, age: Int }`
-- [ ] Struct instantiation: `User { name: "Sabil", age: 17 }`
-- [ ] Field access: `user.name`
-- [ ] Enums: `enum Color { Red, Green, Blue }`
-- [ ] Enum with data: `enum Shape { Circle(radius: Float), Rect(w: Float, h: Float) }`
+- [x] Structs: `struct User { name: Str, age: Int }`
+- [x] Struct instantiation: `User { name: "Sabil", age: 17 }`
+- [x] Field access: `user.name`
+- [x] Enums: `enum Color { Red, Green, Blue }`
+- [x] Enum with data: `enum Shape { Circle(radius: Float), Rect(w: Float, h: Float) }`
 - [ ] Pattern matching on enums (exhaustive check)
 
 ### Milestone 2.5 — Null Safety

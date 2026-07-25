@@ -38,12 +38,14 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::If), _)) => self.parse_if_expr().map(ast::Statement::IfExpr),
             Some((Ok(Token::While), _)) => self.parse_while_stmt().map(ast::Statement::WhileStmt),
             Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
+            Some((Ok(Token::Enum), _)) => self.parse_enum_decl().map(ast::Statement::EnumDecl),
             Some((Ok(Token::Pub), _)) => {
-                // Lookahead for struct
+                // Lookahead for struct or enum
                 self.lexer.next(); // Consume pub
                 match self.lexer.peek() {
                     Some((Ok(Token::Struct), _)) => self.parse_struct_decl().map(ast::Statement::StructDecl),
-                    _ => return Err(ParseError::UnexpectedToken("Expected struct after pub".into())),
+                    Some((Ok(Token::Enum), _)) => self.parse_enum_decl().map(ast::Statement::EnumDecl),
+                    _ => return Err(ParseError::UnexpectedToken("Expected struct or enum after pub".into())),
                 }
             }
             _ => {
@@ -173,6 +175,67 @@ impl<'a> Parser<'a> {
         self.expect(Token::RBrace)?;
         
         Ok(ast::StructDecl { name, fields })
+    }
+    fn parse_enum_decl(&mut self) -> Result<ast::EnumDecl, ParseError> {
+        self.expect(Token::Enum)?;
+        
+        let name = match self.lexer.next() {
+            Some((Ok(Token::Ident(name)), _)) => name,
+            _ => return Err(ParseError::UnexpectedToken("Expected enum name".into())),
+        };
+        
+        self.expect(Token::LBrace)?;
+        
+        let mut variants = Vec::new();
+        while let Some((Ok(token), _)) = self.lexer.peek() {
+            if token == &Token::RBrace { break; }
+            
+            let variant_name = match self.lexer.next() {
+                Some((Ok(Token::Ident(n)), _)) => n,
+                _ => return Err(ParseError::UnexpectedToken("Expected variant name".into())),
+            };
+            
+            let mut data = None;
+            
+            // Check if variant has data: EnumVariant(x: Int)
+            if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
+                self.lexer.next(); // consume '('
+                let mut fields = Vec::new();
+                while let Some((Ok(tok), _)) = self.lexer.peek() {
+                    if tok == &Token::RParen { break; }
+                    
+                    let field_name = match self.lexer.next() {
+                        Some((Ok(Token::Ident(n)), _)) => n,
+                        _ => return Err(ParseError::UnexpectedToken("Expected field name in enum variant".into())),
+                    };
+                    
+                    self.expect(Token::Colon)?;
+                    
+                    let type_name = match self.lexer.next() {
+                        Some((Ok(Token::Ident(t)), _)) => t,
+                        _ => return Err(ParseError::UnexpectedToken("Expected type name in enum variant".into())),
+                    };
+                    
+                    fields.push(ast::StructField { name: field_name, type_name });
+                    
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                self.expect(Token::RParen)?;
+                data = Some(fields);
+            }
+            
+            variants.push(ast::EnumVariant { name: variant_name, data });
+            
+            // Optional comma
+            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                self.lexer.next();
+            }
+        }
+        self.expect(Token::RBrace)?;
+        
+        Ok(ast::EnumDecl { name, variants })
     }
 
     fn parse_let_stmt(&mut self) -> Result<ast::LetStmt, ParseError> {

@@ -13,6 +13,19 @@ pub enum Statement {
     IfExpr(IfExpr),
     WhileStmt(WhileStmt),
     StructDecl(StructDecl),
+    EnumDecl(EnumDecl),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumDecl {
+    pub name: String,
+    pub variants: Vec<EnumVariant>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct EnumVariant {
+    pub name: String,
+    pub data: Option<Vec<StructField>>, // Similar to struct fields
 }
 
 #[derive(Debug, PartialEq, Clone)]
