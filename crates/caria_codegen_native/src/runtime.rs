@@ -18,7 +18,20 @@ pub extern "C" fn caria_say_int(val: i64) {
 
 #[no_mangle]
 pub extern "C" fn caria_say_txt(ptr: *const u8, len: i64) {
-    if ptr.is_null() || len <= 0 {
+    if ptr.is_null() {
+        println!();
+        return;
+    }
+    if len < 0 {
+        let c_str = unsafe { std::ffi::CStr::from_ptr(ptr as *const std::os::raw::c_char) };
+        if let Ok(s) = c_str.to_str() {
+            println!("{}", s);
+        } else {
+            println!("<Invalid UTF-8 txt>");
+        }
+        return;
+    }
+    if len == 0 {
         println!();
         return;
     }
@@ -43,6 +56,21 @@ pub extern "C" fn caria_get_env_int(ptr: *const u8) -> i64 {
         }
     }
     0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_get_env_txt(ptr: *const u8) -> *const u8 {
+    if ptr.is_null() {
+        return std::ptr::null();
+    }
+    let c_str = unsafe { std::ffi::CStr::from_ptr(ptr as *const std::os::raw::c_char) };
+    if let Ok(name) = c_str.to_str() {
+        if let Ok(val_str) = std::env::var(name) {
+            let leaked = Box::leak(val_str.into_boxed_str());
+            return leaked.as_ptr();
+        }
+    }
+    std::ptr::null()
 }
 
 #[no_mangle]
@@ -130,4 +158,23 @@ pub extern "C" fn caria_start_server(port: i64) {
         
         let _ = request.respond(response);
     }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_str_concat(ptr1: *const u8, ptr2: *const u8) -> *const u8 {
+    if ptr1.is_null() && ptr2.is_null() {
+        return std::ptr::null();
+    }
+    if ptr1.is_null() {
+        return ptr2;
+    }
+    if ptr2.is_null() {
+        return ptr1;
+    }
+    let s1 = unsafe { std::ffi::CStr::from_ptr(ptr1 as *const std::os::raw::c_char) };
+    let s2 = unsafe { std::ffi::CStr::from_ptr(ptr2 as *const std::os::raw::c_char) };
+    
+    let res = format!("{}{}", s1.to_string_lossy(), s2.to_string_lossy());
+    let leaked = Box::leak(res.into_boxed_str());
+    leaked.as_ptr()
 }

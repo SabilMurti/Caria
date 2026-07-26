@@ -53,24 +53,49 @@ fn parse_config(path: &str) -> CariaConfig {
 // ---------------------------------------------------------------------------
 // Parser & Typecheck Helper
 // ---------------------------------------------------------------------------
+fn collect_cria_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_cria_files(&path, files);
+            } else if path.extension().map_or(false, |ext| ext == "cria") {
+                files.push(path);
+            }
+        }
+    }
+}
+
 fn parse_and_check(file_path: &str, format_json: bool) -> caria_parser::ast::Program {
     let mut source = fs::read_to_string(file_path).unwrap_or_else(|_| {
         eprintln!("Error: Could not read file '{}'", file_path);
         std::process::exit(1);
     });
 
-    // Automatically merge routes/web.cria and routes/api.cria when building public/index.cria
+    // Automatically merge all project files (bootstrap, app, routes) when compiling entry point
     if file_path.ends_with("public/index.cria") {
-        if Path::new("routes/web.cria").exists() {
-            if let Ok(web_src) = fs::read_to_string("routes/web.cria") {
-                source.push_str("\n// --- Web Routes ---\n");
-                source.push_str(&web_src);
-            }
+        let mut proj_files = Vec::new();
+        if Path::new("bootstrap").exists() {
+            collect_cria_files(Path::new("bootstrap"), &mut proj_files);
         }
-        if Path::new("routes/api.cria").exists() {
-            if let Ok(api_src) = fs::read_to_string("routes/api.cria") {
-                source.push_str("\n// --- API Routes ---\n");
-                source.push_str(&api_src);
+        if Path::new("app").exists() {
+            collect_cria_files(Path::new("app"), &mut proj_files);
+        }
+        if Path::new("routes").exists() {
+            collect_cria_files(Path::new("routes"), &mut proj_files);
+        }
+
+        // Sort files to ensure deterministic compilation order (e.g. bootstrap files first)
+        proj_files.sort();
+
+        for path in proj_files {
+            // Avoid double-merging public/index.cria if it's placed in one of the directories
+            if path.to_str().unwrap().contains("public/index.cria") {
+                continue;
+            }
+            if let Ok(content) = fs::read_to_string(&path) {
+                source.push_str(&format!("\n// --- Merged: {} ---\n", path.display()));
+                source.push_str(&content);
             }
         }
     }
@@ -176,7 +201,15 @@ long long caria_time_now_ms() {
     return (long long)ts.tv_sec * 1000 + (long long)ts.tv_nsec / 1000000;
 }
 void caria_say_txt(const char* ptr, long long len) {
-    if (!ptr || len <= 0) {
+    if (!ptr) {
+        printf("\n");
+        return;
+    }
+    if (len < 0) {
+        printf("%s\n", ptr);
+        return;
+    }
+    if (len == 0) {
         printf("\n");
         return;
     }
@@ -187,6 +220,24 @@ long long caria_get_env_int(const char* ptr) {
     char* val_str = getenv(ptr);
     if (!val_str) return 0;
     return atoll(val_str);
+}
+const char* caria_get_env_txt(const char* ptr) {
+    if (!ptr) return "";
+    char* val_str = getenv(ptr);
+    if (!val_str) return "";
+    return val_str;
+}
+const char* caria_str_concat(const char* ptr1, const char* ptr2) {
+    if (!ptr1 && !ptr2) return "";
+    if (!ptr1) return ptr2;
+    if (!ptr2) return ptr1;
+    size_t l1 = strlen(ptr1);
+    size_t l2 = strlen(ptr2);
+    char* res = (char*)malloc(l1 + l2 + 1);
+    if (!res) return "";
+    strcpy(res, ptr1);
+    strcat(res, ptr2);
+    return res;
 }
 
 typedef struct {
@@ -735,6 +786,13 @@ fn main() {
                 cmd_run_native(&target_file, format_json);
             }
         }
+        "install" => {
+            if args.len() < 3 {
+                eprintln!("Usage: caria install <package-name>");
+                std::process::exit(1);
+            }
+            cmd_install(&args[2]);
+        }
         "lsp" => {
             cmd_lsp();
         }
@@ -764,5 +822,61 @@ fn main() {
             eprintln!("Unknown command: '{}'", other);
             std::process::exit(1);
         }
+    }
+}
+
+fn cmd_install(pkg: &str) {
+    if pkg == "calesteria" {
+        println!("✨ Downloading and compiling Calesteria Web Framework Installer...");
+        let temp_dir = "/tmp/calesteria_install_temp";
+        let _ = fs::remove_dir_all(temp_dir);
+        
+        let clone_status = std::process::Command::new("git")
+            .arg("clone")
+            .arg("https://github.com/SabilMurti/Calesteria.git")
+            .arg(temp_dir)
+            .status();
+            
+        if clone_status.is_err() || !clone_status.unwrap().success() {
+            eprintln!("Error: Failed to clone Calesteria repository.");
+            std::process::exit(1);
+        }
+        
+        println!("🔨 Compiling calesteria installer...");
+        let build_status = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .arg("-p")
+            .arg("calesteria_cli")
+            .current_dir(temp_dir)
+            .status();
+            
+        if build_status.is_err() || !build_status.unwrap().success() {
+            eprintln!("Error: Failed to build calesteria binary.");
+            let _ = fs::remove_dir_all(temp_dir);
+            std::process::exit(1);
+        }
+        
+        println!("🚀 Registering calesteria global binary...");
+        let home_bin = format!("{}/.local/bin", std::env::var("HOME").unwrap());
+        let source_bin = format!("{}/target/release/calesteria_cli", temp_dir);
+        let dest_bin = format!("{}/calesteria", home_bin);
+        
+        let _ = fs::create_dir_all(&home_bin);
+        let copy_status = std::process::Command::new("cp")
+            .arg("-f")
+            .arg(&source_bin)
+            .arg(&dest_bin)
+            .status();
+            
+        if copy_status.is_ok() && copy_status.unwrap().success() {
+            println!("✅ Successfully installed Calesteria framework installer!");
+            println!("You can now run: calesteria new <app-name>");
+        } else {
+            eprintln!("Error: Failed to copy binary to {}", dest_bin);
+        }
+        let _ = fs::remove_dir_all(temp_dir);
+    } else {
+        eprintln!("Unknown package: '{}'", pkg);
     }
 }

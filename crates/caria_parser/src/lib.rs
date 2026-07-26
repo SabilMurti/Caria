@@ -1090,6 +1090,25 @@ impl<'a> Parser<'a> {
                 Ok(ast::Expression::EnvExpr(key))
             }
 
+            // view("welcome")
+            Some((Ok(Token::View), _)) => {
+                self.lexer.next();
+                self.expect(Token::LParen)?;
+                let mut args = Vec::new();
+                while let Some((Ok(tok), _)) = self.lexer.peek() {
+                    if tok == &Token::RParen { break; }
+                    args.push(self.parse_expression(0)?);
+                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
+                        self.lexer.next();
+                    }
+                }
+                self.expect(Token::RParen)?;
+                Ok(ast::Expression::CallExpr {
+                    callee: Box::new(ast::Expression::Identifier("view".to_string())),
+                    args,
+                })
+            }
+
             // Identifier → may be function call
             Some((Ok(Token::Ident(_)), _)) => {
                 let name = match self.lexer.next() {

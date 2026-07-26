@@ -143,6 +143,8 @@ impl CariaCompiler {
         jit_builder.symbol("caria_say_int", crate::runtime::caria_say_int as *const u8);
         jit_builder.symbol("caria_say_txt", crate::runtime::caria_say_txt as *const u8);
         jit_builder.symbol("caria_get_env_int", crate::runtime::caria_get_env_int as *const u8);
+        jit_builder.symbol("caria_get_env_txt", crate::runtime::caria_get_env_txt as *const u8);
+        jit_builder.symbol("caria_str_concat", crate::runtime::caria_str_concat as *const u8);
         jit_builder.symbol("caria_register_route", crate::runtime::caria_register_route as *const u8);
         jit_builder.symbol("caria_start_server", crate::runtime::caria_start_server as *const u8);
 
@@ -172,7 +174,24 @@ impl CariaCompiler {
         let id_env = module
             .declare_function("caria_get_env_int", Linkage::Import, &sig_env)
             .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
+        runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env.clone()));
+        runtime_helpers.insert("caria_get_env_int".to_string(), (id_env, sig_env));
+
+        let mut sig_env_txt = module.make_signature();
+        sig_env_txt.params.push(AbiParam::new(types::I64));
+        sig_env_txt.returns.push(AbiParam::new(types::I64));
+        let id_env_txt = module
+            .declare_function("caria_get_env_txt", Linkage::Import, &sig_env_txt)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_get_env_txt".to_string(), (id_env_txt, sig_env_txt));
+
+        let mut sig_time = module.make_signature();
+        sig_time.returns.push(AbiParam::new(types::I64));
+        let id_time = module
+            .declare_function("caria_time_now_ms", Linkage::Import, &sig_time)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("time_now_ms".to_string(), (id_time, sig_time.clone()));
+        runtime_helpers.insert("time_ms".to_string(), (id_time, sig_time));
 
         let mut sig_reg = module.make_signature();
         sig_reg.params.push(AbiParam::new(types::I64));
@@ -189,6 +208,15 @@ impl CariaCompiler {
             .declare_function("caria_start_server", Linkage::Import, &sig_start)
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
+
+        let mut sig_concat = module.make_signature();
+        sig_concat.params.push(AbiParam::new(types::I64));
+        sig_concat.params.push(AbiParam::new(types::I64));
+        sig_concat.returns.push(AbiParam::new(types::I64));
+        let id_concat = module
+            .declare_function("caria_str_concat", Linkage::Import, &sig_concat)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_str_concat".to_string(), (id_concat, sig_concat));
 
         Ok(Self {
             module: Some(BackendModule::JIT(module)),
@@ -239,7 +267,16 @@ impl CariaCompiler {
         let id_env = module
             .declare_function("caria_get_env_int", Linkage::Import, &sig_env)
             .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
+        runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env.clone()));
+        runtime_helpers.insert("caria_get_env_int".to_string(), (id_env, sig_env));
+
+        let mut sig_env_txt = module.make_signature();
+        sig_env_txt.params.push(AbiParam::new(types::I64));
+        sig_env_txt.returns.push(AbiParam::new(types::I64));
+        let id_env_txt = module
+            .declare_function("caria_get_env_txt", Linkage::Import, &sig_env_txt)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_get_env_txt".to_string(), (id_env_txt, sig_env_txt));
 
         let mut sig_time = module.make_signature();
         sig_time.returns.push(AbiParam::new(types::I64));
@@ -264,6 +301,15 @@ impl CariaCompiler {
             .declare_function("caria_start_server", Linkage::Import, &sig_start)
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
+
+        let mut sig_concat = module.make_signature();
+        sig_concat.params.push(AbiParam::new(types::I64));
+        sig_concat.params.push(AbiParam::new(types::I64));
+        sig_concat.returns.push(AbiParam::new(types::I64));
+        let id_concat = module
+            .declare_function("caria_str_concat", Linkage::Import, &sig_concat)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_str_concat".to_string(), (id_concat, sig_concat));
 
         Ok(Self {
             module: Some(BackendModule::Object(module)),
@@ -411,6 +457,7 @@ impl CariaCompiler {
         let mut helper = FunctionEmitter {
             builder,
             variables,
+            variable_types: HashMap::new(),
             next_var_index: &mut next_var_index,
             module: self.module.as_mut().ok_or("Module not initialized")?,
             functions: &self.functions,
@@ -455,9 +502,16 @@ impl CariaCompiler {
                     helper.compile_statement(stmt, &mut returned)?;
                 }
 
-                if rune.name == "main" && !returned {
-                    let zero = helper.builder.ins().iconst(types::I32, 0);
-                    helper.builder.ins().return_(&[zero]);
+                if !returned {
+                    if sig.returns.is_empty() {
+                        helper.builder.ins().return_(&[]);
+                    } else if rune.name == "main" {
+                        let zero = helper.builder.ins().iconst(types::I32, 0);
+                        helper.builder.ins().return_(&[zero]);
+                    } else {
+                        let zero = helper.builder.ins().iconst(types::I64, 0);
+                        helper.builder.ins().return_(&[zero]);
+                    }
                 }
             }
             RuneBody::Inline(expr) => {
@@ -491,6 +545,7 @@ impl CariaCompiler {
         let mut helper = FunctionEmitter {
             builder,
             variables,
+            variable_types: HashMap::new(),
             next_var_index: &mut next_var_index,
             module: self.module.as_mut().ok_or("Module not initialized")?,
             functions: &self.functions,
@@ -525,6 +580,7 @@ impl CariaCompiler {
 struct FunctionEmitter<'a> {
     builder: FunctionBuilder<'a>,
     variables: HashMap<String, Variable>,
+    variable_types: HashMap<String, String>,
     next_var_index: &'a mut usize,
     module: &'a mut BackendModule,
     functions: &'a HashMap<String, (FuncId, Signature)>,
@@ -535,6 +591,34 @@ struct FunctionEmitter<'a> {
 }
 
 impl<'a> FunctionEmitter<'a> {
+    fn infer_type(&self, expr: &Expression) -> &'static str {
+        match expr {
+            Expression::Literal(Literal::Str(_)) => "Str",
+            Expression::Literal(Literal::Int(_)) => "Int",
+            Expression::Literal(Literal::Bool(_)) => "Bool",
+            Expression::EnvExpr(_) => "Str",
+            Expression::Identifier(name) => {
+                if let Some(t) = self.variable_types.get(name) {
+                    if t == "Str" {
+                        return "Str";
+                    }
+                }
+                "Any"
+            }
+            Expression::BinaryExpr { left, .. } => {
+                self.infer_type(left)
+            }
+            Expression::CallExpr { callee, .. } => {
+                if let Expression::Identifier(name) = &**callee {
+                    if name == "view" {
+                        return "Str";
+                    }
+                }
+                "Any"
+            }
+            _ => "Any",
+        }
+    }
     fn compile_statement(&mut self, stmt: &Statement, returned: &mut bool) -> Result<(), String> {
         if *returned {
             return Ok(());
@@ -543,6 +627,8 @@ impl<'a> FunctionEmitter<'a> {
         match stmt {
             Statement::ConstDecl(decl) => {
                 let val = self.compile_expr(&decl.value)?;
+                let inferred = self.infer_type(&decl.value).to_string();
+                self.variable_types.insert(decl.name.clone(), inferred);
                 if let Some(&var) = self.variables.get(&decl.name) {
                     self.builder.def_var(var, val);
                 } else {
@@ -556,6 +642,8 @@ impl<'a> FunctionEmitter<'a> {
             }
             Statement::MutDecl(decl) => {
                 let val = self.compile_expr(&decl.value)?;
+                let inferred = self.infer_type(&decl.value).to_string();
+                self.variable_types.insert(decl.name.clone(), inferred);
                 if let Some(&var) = self.variables.get(&decl.name) {
                     self.builder.def_var(var, val);
                 } else {
@@ -581,9 +669,14 @@ impl<'a> FunctionEmitter<'a> {
                 *returned = true;
             }
             Statement::SayStmt(expr) => {
-                if let Expression::Literal(Literal::Str(s)) = expr {
+                let is_str = self.infer_type(expr) == "Str";
+                if is_str {
                     let ptr = self.compile_expr(expr)?;
-                    let len_val = self.builder.ins().iconst(types::I64, s.len() as i64);
+                    let len_val = if let Expression::Literal(Literal::Str(s)) = expr {
+                        self.builder.ins().iconst(types::I64, s.len() as i64)
+                    } else {
+                        self.builder.ins().iconst(types::I64, -1)
+                    };
                     let helper_id = self.runtime_helpers.get("caria_say_txt").unwrap().0;
                     let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
                     self.builder.ins().call(local_ref, &[ptr, len_val]);
@@ -692,7 +785,18 @@ impl<'a> FunctionEmitter<'a> {
                 let lhs = self.compile_expr(left)?;
                 let rhs = self.compile_expr(right)?;
                 match op {
-                    BinaryOp::Add => Ok(self.builder.ins().iadd(lhs, rhs)),
+                    BinaryOp::Add => {
+                        let left_type = self.infer_type(left);
+                        let right_type = self.infer_type(right);
+                        if left_type == "Str" || right_type == "Str" {
+                            let helper_id = self.runtime_helpers.get("caria_str_concat").unwrap().0;
+                            let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
+                            let inst = self.builder.ins().call(local_ref, &[lhs, rhs]);
+                            Ok(self.builder.inst_results(inst)[0])
+                        } else {
+                            Ok(self.builder.ins().iadd(lhs, rhs))
+                        }
+                    }
                     BinaryOp::Subtract => Ok(self.builder.ins().isub(lhs, rhs)),
                     BinaryOp::Multiply => Ok(self.builder.ins().imul(lhs, rhs)),
                     BinaryOp::Divide => Ok(self.builder.ins().sdiv(lhs, rhs)),
@@ -834,6 +938,16 @@ impl<'a> FunctionEmitter<'a> {
 
                 let res = self.builder.block_params(merge_block)[0];
                 Ok(res)
+            }
+            Expression::EnvExpr(key) => {
+                let key_gv = self.get_or_create_string_literal(key)?;
+                let key_local = self.module.declare_data_in_func(key_gv, &mut self.builder.func);
+                let key_ptr = self.builder.ins().global_value(types::I64, key_local);
+                
+                let helper_id = self.runtime_helpers.get("caria_get_env_txt").unwrap().0;
+                let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
+                let inst = self.builder.ins().call(local_ref, &[key_ptr]);
+                Ok(self.builder.inst_results(inst)[0])
             }
             _ => {
                 Ok(self.builder.ins().iconst(types::I64, 0))

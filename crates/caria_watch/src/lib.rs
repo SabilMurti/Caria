@@ -25,12 +25,8 @@ pub fn start_watcher(file_path: &str) -> Result<()> {
             let _ = child.wait();
         }
 
-        // Spawn new build/run process asynchronously
-        let child_res = Command::new("cargo")
-            .arg("run")
-            .arg("-p")
-            .arg("caria_cli")
-            .arg("--")
+        // Spawn new build/run process asynchronously using the global caria binary
+        let child_res = Command::new("caria")
             .arg("run")
             .arg(path_to_watch_cloned.to_str().unwrap())
             .spawn();

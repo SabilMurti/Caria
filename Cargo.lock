@@ -110,14 +110,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
-name = "calesteria_cli"
-version = "0.4.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "caria_cli"
 version = "0.1.0"
 dependencies = [
