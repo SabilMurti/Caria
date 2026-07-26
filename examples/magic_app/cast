@@ -1,0 +1,3 @@
+#!/usr/bin/env caria
+# Calesteria Framework CLI Executable (Laravel Artisan Equivalent)
+exec caria cast "$@"

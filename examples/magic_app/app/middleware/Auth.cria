@@ -1,5 +1,0 @@
-// Middleware: Auth
-
-rune handle() -> flag {
-    ret true
-}

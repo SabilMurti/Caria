@@ -11,6 +11,8 @@ use cranelift_module::{Module, Linkage, FuncId, DataId, DataDescription};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::collections::HashMap;
+use std::path::Path;
+use std::fs;
 
 pub enum BackendModule {
     JIT(JITModule),
@@ -723,6 +725,26 @@ impl<'a> FunctionEmitter<'a> {
             }
             Expression::CallExpr { callee, args } => {
                 if let Expression::Identifier(name) = &**callee {
+                    if name == "view" {
+                        if let Some(Expression::Literal(Literal::Str(view_name))) = args.first() {
+                            let possible_paths = [
+                                format!("views/{}.glyph", view_name),
+                                format!("views/{}.cria", view_name),
+                                format!("views/{}.html", view_name),
+                            ];
+                            let mut view_content = format!("<h1>View '{}' not found</h1>", view_name);
+                            for p in &possible_paths {
+                                if Path::new(p).exists() {
+                                    if let Ok(content) = fs::read_to_string(p) {
+                                        view_content = content;
+                                        break;
+                                    }
+                                }
+                            }
+                            return self.compile_expr(&Expression::Literal(Literal::Str(view_content)));
+                        }
+                    }
+
                     if let Some(&(func_id, ref sig)) = self.functions.get(name) {
                         let mut compiled_args = Vec::new();
                         for arg in args {
