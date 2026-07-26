@@ -8,42 +8,46 @@ use ariadne::{Report, ReportKind, Label, Source, Color};
 // ---------------------------------------------------------------------------
 // calesteria.toml config
 // ---------------------------------------------------------------------------
+use std::collections::HashMap;
+
 #[derive(Debug, Default)]
 struct CariaConfig {
     name: String,
     entry: String,
     mode: String,      // "script" | "server"
     port: Option<u16>,
+    scripts: HashMap<String, String>,
 }
 
 fn parse_config(path: &str) -> CariaConfig {
-    let content = fs::read_to_string(path).unwrap_or_default();
-    let mut cfg = CariaConfig {
-        mode: "server".into(),
-        entry: "routes/web.cria".into(),
-        ..Default::default()
-    };
-    for line in content.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("name") {
-            if let Some(val) = rest.trim_start_matches([' ', '='].as_ref()).strip_prefix('"') {
-                cfg.name = val.trim_end_matches('"').to_string();
-            }
-        } else if let Some(rest) = line.strip_prefix("entry") {
-            if let Some(val) = rest.trim_start_matches([' ', '='].as_ref()).strip_prefix('"') {
-                cfg.entry = val.trim_end_matches('"').to_string();
-            }
-        } else if let Some(rest) = line.strip_prefix("mode") {
-            if let Some(val) = rest.trim_start_matches([' ', '='].as_ref()).strip_prefix('"') {
-                cfg.mode = val.trim_end_matches('"').to_string();
-            }
-        } else if let Some(rest) = line.strip_prefix("port") {
-            if let Some(val) = rest.trim_start_matches([' ', '='].as_ref()).parse::<u16>().ok() {
-                cfg.port = Some(val);
+    let json_paths = ["caria.json", "calesteria.json", path];
+    for p in &json_paths {
+        if Path::new(p).exists() {
+            if let Ok(content) = fs::read_to_string(p) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                    let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("app").to_string();
+                    let entry = v.get("entry").and_then(|e| e.as_str()).unwrap_or("routes/web.cria").to_string();
+                    let mode = v.get("mode").and_then(|m| m.as_str()).unwrap_or("server").to_string();
+                    let port = v.get("port").and_then(|p| p.as_u64()).map(|p| p as u16);
+                    let mut scripts = HashMap::new();
+                    if let Some(s_obj) = v.get("scripts").and_then(|s| s.as_object()) {
+                        for (k, val) in s_obj {
+                            if let Some(val_str) = val.as_str() {
+                                scripts.insert(k.clone(), val_str.to_string());
+                            }
+                        }
+                    }
+                    return CariaConfig { name, entry, mode, port, scripts };
+                }
             }
         }
     }
-    cfg
+
+    CariaConfig {
+        mode: "server".into(),
+        entry: "routes/web.cria".into(),
+        ..Default::default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,10 +149,30 @@ fn cmd_new(name: &str) {
     // 2. Scaffold .env
     fs::write(dir.join(".env"), "APP_NAME=\"Calesteria Magic App\"\nAPP_ENV=\"development\"\nPORT=8080\nDB_URL=\"sqlite://app.db\"\n").unwrap();
 
-    // 3. Scaffold Caria.config
-    fs::write(dir.join("Caria.config"), format!(
-        "name = \"{name}\"\nentry = \"routes/web.cria\"\nmode = \"server\"\nport = 8080\n"
-    )).unwrap();
+    // 3. Scaffold caria.json (Composer/Package.json format)
+    let caria_json_content = serde_json::json!({
+        "$schema": "https://calesteria.dev/schema.json",
+        "name": name,
+        "type": "project",
+        "description": "The skeleton application for the Calesteria framework.",
+        "version": "1.0.0",
+        "entry": "routes/web.cria",
+        "require": {
+            "caria/framework": "^0.4.0"
+        },
+        "autoload": {
+            "cria": {
+                "App\\": "app/",
+                "Database\\": "database/"
+            }
+        },
+        "scripts": {
+            "dev": "calesteria dev routes/web.cria",
+            "build": "calesteria build routes/web.cria",
+            "start": "./web"
+        }
+    });
+    fs::write(dir.join("caria.json"), serde_json::to_string_pretty(&caria_json_content).unwrap()).unwrap();
 
     // 4. Scaffold Master Glyph Layout (views/layouts/app.glyph)
     fs::write(dir.join("views/layouts/app.glyph"), r#"<!DOCTYPE html>
@@ -740,14 +764,15 @@ fn main() {
                 }
             }
             
-            let file_path = match file {
-                Some(f) => f,
-                None => {
-                    eprintln!("Usage: calesteria run <file.caria>");
-                    std::process::exit(1);
-                }
-            };
-            cmd_run_native(&file_path, format_json);
+            let config = parse_config("caria.json");
+            let target_file = file.unwrap_or_else(|| config.entry.clone());
+
+            // Check if script exists in caria.json (e.g. `calesteria run dev`)
+            if target_file == "dev" || config.scripts.contains_key(&target_file) {
+                cmd_dev(&config.entry);
+            } else {
+                cmd_run_native(&target_file, format_json);
+            }
         }
         "lsp" => {
             cmd_lsp();
@@ -756,11 +781,13 @@ fn main() {
             cmd_repl();
         }
         "dev" => {
-            if args.len() < 3 {
-                eprintln!("Usage: calesteria dev <file.caria>");
-                std::process::exit(1);
-            }
-            cmd_dev(&args[2]);
+            let config = parse_config("caria.json");
+            let target_file = if args.len() >= 3 {
+                args[2].clone()
+            } else {
+                config.entry
+            };
+            cmd_dev(&target_file);
         }
         "fmt" => {
             if args.len() < 3 {
