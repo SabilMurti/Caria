@@ -54,10 +54,26 @@ fn parse_config(path: &str) -> CariaConfig {
 // Parser & Typecheck Helper
 // ---------------------------------------------------------------------------
 fn parse_and_check(file_path: &str, format_json: bool) -> caria_parser::ast::Program {
-    let source = fs::read_to_string(file_path).unwrap_or_else(|_| {
+    let mut source = fs::read_to_string(file_path).unwrap_or_else(|_| {
         eprintln!("Error: Could not read file '{}'", file_path);
         std::process::exit(1);
     });
+
+    // Automatically merge routes/web.cria and routes/api.cria when building public/index.cria
+    if file_path.ends_with("public/index.cria") {
+        if Path::new("routes/web.cria").exists() {
+            if let Ok(web_src) = fs::read_to_string("routes/web.cria") {
+                source.push_str("\n// --- Web Routes ---\n");
+                source.push_str(&web_src);
+            }
+        }
+        if Path::new("routes/api.cria").exists() {
+            if let Ok(api_src) = fs::read_to_string("routes/api.cria") {
+                source.push_str("\n// --- API Routes ---\n");
+                source.push_str(&api_src);
+            }
+        }
+    }
 
     let lexer = CariaLexer::new(&source);
     let mut parser = Parser::new(lexer);
@@ -168,13 +184,12 @@ fn cmd_new(name: &str) {
             }
         },
         "scripts": {
-            "dev": "calesteria dev public/index.cria",
-            "serve": "calesteria dev public/index.cria",
-            "build": "calesteria build public/index.cria",
+            "dev": "caria cast serve",
+            "serve": "caria cast serve",
+            "build": "caria build public/index.cria",
             "start": "./web"
         }
     });
-    fs::write(dir.join("aria.json"), serde_json::to_string_pretty(&caria_json_content).unwrap()).unwrap();
     fs::write(dir.join("caria.json"), serde_json::to_string_pretty(&caria_json_content).unwrap()).unwrap();
 
     // 4. Scaffold bootstrap/app.cria (Laravel 12-Grade Application Bootstrapper)
@@ -225,7 +240,7 @@ rune bootstrap_app() -> int {
 
     // 7. Scaffold Web Routes (routes/web.cria)
     fs::write(dir.join("routes/web.cria"), r#"get "/" {
-    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel 12-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>bootstrap/app.cria & public/index.cria Bootstrapped</div></div></body></html>"
+    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel 12-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>routes/web.cria & routes/api.cria Bootstrapped</div></div></body></html>"
 }
 "#).unwrap();
 
@@ -236,13 +251,8 @@ rune bootstrap_app() -> int {
 "#).unwrap();
 
     // 9. Scaffold Public Entrypoint (public/index.cria)
-    fs::write(dir.join("public/index.cria"), r#"get "/" {
-    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel 12-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>public/index.cria & bootstrap/app.cria Active</div></div></body></html>"
-}
-
-get "/api/health" {
-    ret "{\"status\":\"ok\",\"engine\":\"Caria Native AOT\"}"
-}
+    fs::write(dir.join("public/index.cria"), r#"// Public Entrypoint for Calesteria Framework Application
+// Routes are defined in routes/web.cria & routes/api.cria
 
 rune main() -> int {
     ret 0
@@ -711,6 +721,65 @@ fn cmd_spec() {
     let _ = fs::write(".calesteria/llm-spec.md", spec);
 }
 
+fn cmd_cast(args: &[String]) {
+    if args.is_empty() {
+        println!("✨ Caria Framework CLI (Cast / Artisan Equivalent)");
+        println!("Usage:");
+        println!("  caria cast serve                   Start hot-reloading dev server");
+        println!("  caria cast make:controller <Name>  Create a new controller");
+        println!("  caria cast make:model <Name>       Create a new model");
+        println!("  caria cast make:middleware <Name>  Create a new middleware");
+        return;
+    }
+
+    match args[0].as_str() {
+        "serve" | "dev" => {
+            let config = parse_config("caria.json");
+            cmd_dev(&config.entry);
+        }
+        "make:controller" => {
+            if args.len() < 2 {
+                eprintln!("Usage: caria cast make:controller <Name>");
+                return;
+            }
+            let name = &args[1];
+            let name_clean = name.strip_suffix("Controller").unwrap_or(name);
+            let file_path = format!("app/controllers/{}Controller.cria", name_clean);
+            let content = format!("// Controller: {}Controller\n\nrune index() -> txt {{\n    ret \"Hello from {}Controller\"\n}}\n", name_clean, name_clean);
+            let _ = fs::create_dir_all("app/controllers");
+            fs::write(&file_path, content).unwrap();
+            println!("✨ Created Controller: {}", file_path);
+        }
+        "make:model" => {
+            if args.len() < 2 {
+                eprintln!("Usage: caria cast make:model <Name>");
+                return;
+            }
+            let name = &args[1];
+            let file_path = format!("app/models/{}.cria", name);
+            let content = format!("// Model: {}\n\nmodel {} {{\n    id: int,\n    created_at: txt,\n    updated_at: txt\n}}\n", name, name);
+            let _ = fs::create_dir_all("app/models");
+            fs::write(&file_path, content).unwrap();
+            println!("✨ Created Model: {}", file_path);
+        }
+        "make:middleware" => {
+            if args.len() < 2 {
+                eprintln!("Usage: caria cast make:middleware <Name>");
+                return;
+            }
+            let name = &args[1];
+            let file_path = format!("app/middleware/{}.cria", name);
+            let content = format!("// Middleware: {}\n\nrune handle() -> flag {{\n    ret true\n}}\n", name);
+            let _ = fs::create_dir_all("app/middleware");
+            fs::write(&file_path, content).unwrap();
+            println!("✨ Created Middleware: {}", file_path);
+        }
+        other => {
+            eprintln!("Unknown cast command: '{}'", other);
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -718,18 +787,19 @@ fn main() {
         println!("✨ Caria Language / Calesteria Web Framework 0.4.0");
         println!("Usage:");
         println!("  calesteria new <app-name>   Scaffold a new Calesteria magic MVC project");
-        println!("  calesteria build <file>     Compile .cria to native executable");
-        println!("  calesteria run <file>       Compile and run .cria natively");
-        println!("  calesteria dev              Start hot-reloading dev server");
-        println!("  calesteria lsp              Start LSP Server");
-        println!("  calesteria fmt <file>       Format a .cria file");
-        println!("  calesteria mcp              Start MCP Server");
-        println!("  calesteria repl             Start REPL session");
-        println!("  calesteria spec             Output LLM-friendly Caria spec");
+        println!("  caria cast serve            Start hot-reloading dev server");
+        println!("  caria cast make:controller  Create a new controller");
+        println!("  caria cast make:model       Create a new model");
+        println!("  caria build <file>          Compile .cria to native executable");
+        println!("  caria run <file>            Compile and run .cria natively");
+        println!("  caria dev                   Start hot-reloading dev server");
         return;
     }
 
     match args[1].as_str() {
+        "cast" => {
+            cmd_cast(&args[2..]);
+        }
         "spec" => {
             cmd_spec();
         }
@@ -769,7 +839,7 @@ fn main() {
                 }
             }
             
-            let file_path = file.unwrap_or_else(|| parse_config("calesteria.toml").entry);
+            let file_path = file.unwrap_or_else(|| parse_config("caria.json").entry);
             if target_wasm {
                 cmd_build_wasm(&file_path, format_json);
             } else {
@@ -795,7 +865,7 @@ fn main() {
             let target_file = file.unwrap_or_else(|| config.entry.clone());
 
             // Check if script exists in caria.json (e.g. `calesteria run dev`)
-            if target_file == "dev" || config.scripts.contains_key(&target_file) {
+            if target_file == "dev" || target_file == "serve" || config.scripts.contains_key(&target_file) {
                 cmd_dev(&config.entry);
             } else {
                 cmd_run_native(&target_file, format_json);
@@ -807,7 +877,7 @@ fn main() {
         "repl" => {
             cmd_repl();
         }
-        "dev" => {
+        "dev" | "serve" => {
             let config = parse_config("caria.json");
             let target_file = if args.len() >= 3 {
                 args[2].clone()

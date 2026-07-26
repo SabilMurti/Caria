@@ -13,9 +13,9 @@
     "caria/framework": "^0.4.0"
   },
   "scripts": {
-    "build": "calesteria build public/index.cria",
-    "dev": "calesteria dev public/index.cria",
-    "serve": "calesteria dev public/index.cria",
+    "build": "caria build public/index.cria",
+    "dev": "caria cast serve",
+    "serve": "caria cast serve",
     "start": "./web"
   },
   "type": "project",
