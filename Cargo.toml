@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/caria_cli",
+    "crates/calesteria_cli",
     "crates/caria_lexer",
     "crates/caria_parser",
     "crates/caria_diagnostic",
