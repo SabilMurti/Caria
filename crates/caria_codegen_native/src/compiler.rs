@@ -99,7 +99,7 @@ pub struct CariaCompiler {
     // String literal counter
     str_count: usize,
     // Native runtime helpers
-    runtime_helpers: HashMap<String, FuncId>,
+    runtime_helpers: HashMap<String, (FuncId, Signature)>,
 }
 
 fn translate_type(type_expr: &TypeExpr) -> ir::Type {
@@ -127,6 +127,7 @@ impl CariaCompiler {
         // Register symbols to make them available in memory during execution
         jit_builder.symbol("caria_say_int", crate::runtime::caria_say_int as *const u8);
         jit_builder.symbol("caria_say_txt", crate::runtime::caria_say_txt as *const u8);
+        jit_builder.symbol("caria_get_env_int", crate::runtime::caria_get_env_int as *const u8);
 
         let mut module = JITModule::new(jit_builder);
 
@@ -138,7 +139,7 @@ impl CariaCompiler {
         let id_int = module
             .declare_function("caria_say_int", Linkage::Import, &sig_int)
             .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("caria_say_int".to_string(), id_int);
+        runtime_helpers.insert("caria_say_int".to_string(), (id_int, sig_int.clone()));
 
         let mut sig_txt = module.make_signature();
         sig_txt.params.push(AbiParam::new(types::I64)); // pointer to str bytes
@@ -146,7 +147,15 @@ impl CariaCompiler {
         let id_txt = module
             .declare_function("caria_say_txt", Linkage::Import, &sig_txt)
             .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("caria_say_txt".to_string(), id_txt);
+        runtime_helpers.insert("caria_say_txt".to_string(), (id_txt, sig_txt));
+
+        let mut sig_env = module.make_signature();
+        sig_env.params.push(AbiParam::new(types::I64));
+        sig_env.returns.push(AbiParam::new(types::I64));
+        let id_env = module
+            .declare_function("caria_get_env_int", Linkage::Import, &sig_env)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
 
         Ok(Self {
             module: Some(BackendModule::JIT(module)),
@@ -180,7 +189,7 @@ impl CariaCompiler {
         let id_int = module
             .declare_function("caria_say_int", Linkage::Import, &sig_int)
             .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("caria_say_int".to_string(), id_int);
+        runtime_helpers.insert("caria_say_int".to_string(), (id_int, sig_int.clone()));
 
         let mut sig_txt = module.make_signature();
         sig_txt.params.push(AbiParam::new(types::I64));
@@ -188,7 +197,15 @@ impl CariaCompiler {
         let id_txt = module
             .declare_function("caria_say_txt", Linkage::Import, &sig_txt)
             .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("caria_say_txt".to_string(), id_txt);
+        runtime_helpers.insert("caria_say_txt".to_string(), (id_txt, sig_txt));
+
+        let mut sig_env = module.make_signature();
+        sig_env.params.push(AbiParam::new(types::I64));
+        sig_env.returns.push(AbiParam::new(types::I64));
+        let id_env = module
+            .declare_function("caria_get_env_int", Linkage::Import, &sig_env)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
 
         Ok(Self {
             module: Some(BackendModule::Object(module)),
@@ -338,7 +355,7 @@ struct FunctionEmitter<'a> {
     next_var_index: &'a mut usize,
     module: &'a mut BackendModule,
     functions: &'a HashMap<String, (FuncId, Signature)>,
-    runtime_helpers: &'a HashMap<String, FuncId>,
+    runtime_helpers: &'a HashMap<String, (FuncId, Signature)>,
     str_count: &'a mut usize,
     string_literals: HashMap<String, DataId>,
 }
@@ -388,11 +405,11 @@ impl<'a> FunctionEmitter<'a> {
                 let val_type = self.builder.func.dfg.value_type(val);
 
                 if val_type == types::I64 {
-                    let helper_id = *self.runtime_helpers.get("caria_say_int").unwrap();
+                    let helper_id = self.runtime_helpers.get("caria_say_int").unwrap().0;
                     let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
                     self.builder.ins().call(local_ref, &[val]);
                 } else {
-                    let helper_id = *self.runtime_helpers.get("caria_say_int").unwrap();
+                    let helper_id = self.runtime_helpers.get("caria_say_int").unwrap().0;
                     let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
                     self.builder.ins().call(local_ref, &[val]);
                 }
@@ -507,10 +524,20 @@ impl<'a> FunctionEmitter<'a> {
                         for arg in args {
                             compiled_args.push(self.compile_expr(arg)?);
                         }
-                        
                         let local_ref = self.module.declare_func_in_func(func_id, &mut self.builder.func);
                         let inst = self.builder.ins().call(local_ref, &compiled_args);
-                        
+                        if !sig.returns.is_empty() {
+                            Ok(self.builder.inst_results(inst)[0])
+                        } else {
+                            Ok(self.builder.ins().iconst(types::I64, 0))
+                        }
+                    } else if let Some(&(func_id, ref sig)) = self.runtime_helpers.get(name) {
+                        let mut compiled_args = Vec::new();
+                        for arg in args {
+                            compiled_args.push(self.compile_expr(arg)?);
+                        }
+                        let local_ref = self.module.declare_func_in_func(func_id, &mut self.builder.func);
+                        let inst = self.builder.ins().call(local_ref, &compiled_args);
                         if !sig.returns.is_empty() {
                             Ok(self.builder.inst_results(inst)[0])
                         } else {
@@ -603,7 +630,9 @@ impl<'a> FunctionEmitter<'a> {
             .map_err(|e| e.to_string())?;
 
         let mut desc = DataDescription::new();
-        desc.define(s.as_bytes().to_vec().into_boxed_slice());
+        let mut bytes = s.as_bytes().to_vec();
+        bytes.push(0); // Null-terminate for standard C-helpers (getenv, strlen, etc.)
+        desc.define(bytes.into_boxed_slice());
         self.module.define_data(data_id, &desc)?;
 
         self.string_literals.insert(s.to_string(), data_id);

@@ -166,6 +166,7 @@ fn cmd_build_native(file_path: &str, format_json: bool) {
     // Write runtime helper C source on the fly
     let runtime_c = r#"
 #include <stdio.h>
+#include <stdlib.h>
 void caria_say_int(long long val) {
     printf("%lld\n", val);
 }
@@ -175,6 +176,16 @@ void caria_say_txt(const char* ptr, long long len) {
         return;
     }
     printf("%.*s\n", (int)len, ptr);
+}
+long long caria_get_env_int(const char* ptr, long long len) {
+    if (!ptr || len <= 0) return 0;
+    char buf[256];
+    if (len >= 256) len = 255;
+    for (int i = 0; i < len; ++i) buf[i] = ptr[i];
+    buf[len] = '\0';
+    char* val_str = getenv(buf);
+    if (!val_str) return 0;
+    return atoll(val_str);
 }
 "#;
     let temp_runtime_c_path = format!("{}_runtime.c", file_stem);

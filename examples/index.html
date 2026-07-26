@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calesteria Native Calculator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top right, #1e1b4b, #030712);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen text-gray-100 px-4 overflow-hidden">
+
+    <!-- Card Wrapper -->
+    <div class="relative w-full max-w-sm bg-gray-900/80 backdrop-blur-xl border border-gray-800 rounded-3xl p-6 shadow-2xl shadow-indigo-950/50">
+        <!-- Accent Glow -->
+        <div class="absolute -top-10 -left-10 w-40 h-40 bg-indigo-600/20 rounded-full blur-3xl -z-10"></div>
+        <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-purple-600/20 rounded-full blur-3xl -z-10"></div>
+
+        <!-- Title -->
+        <div class="flex items-center justify-between mb-6">
+            <span class="text-xs uppercase tracking-widest text-indigo-400 font-semibold">Calesteria Native</span>
+            <div class="flex space-x-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500/80"></span>
+            </div>
+        </div>
+
+        <!-- Calculator Display Screen -->
+        <div class="bg-gray-950/80 border border-gray-800/80 rounded-2xl p-5 mb-6 text-right relative overflow-hidden">
+            <div id="equation-display" class="text-sm text-gray-500 min-h-[1.25rem] tracking-wide mb-1 transition-all duration-300"></div>
+            <div id="result-display" class="text-4xl font-light tracking-tight text-white transition-all duration-300 truncate">0</div>
+            <!-- Backend execution indicator -->
+            <div id="status-indicator" class="absolute bottom-2 left-3 flex items-center space-x-1 text-[10px] text-gray-600 font-mono transition-opacity duration-300 opacity-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                <span>OS Native Run</span>
+            </div>
+        </div>
+
+        <!-- Keypad Grid -->
+        <div class="grid grid-cols-4 gap-3.5">
+            <!-- Row 1 -->
+            <button onclick="clearAll()" class="col-span-2 py-4 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-2xl text-gray-200 text-lg font-medium transition-all duration-150 active:scale-95">AC</button>
+            <button onclick="deleteLast()" class="py-4 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-2xl text-gray-200 text-lg font-medium transition-all duration-150 active:scale-95">⌫</button>
+            <button onclick="setOperator(4, '/')" class="py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95">÷</button>
+
+            <!-- Row 2 -->
+            <button onclick="appendNum(7)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">7</button>
+            <button onclick="appendNum(8)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">8</button>
+            <button onclick="appendNum(9)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">9</button>
+            <button onclick="setOperator(3, '*')" class="py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95">×</button>
+
+            <!-- Row 3 -->
+            <button onclick="appendNum(4)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">4</button>
+            <button onclick="appendNum(5)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">5</button>
+            <button onclick="appendNum(6)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">6</button>
+            <button onclick="setOperator(2, '-')" class="py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95">−</button>
+
+            <!-- Row 4 -->
+            <button onclick="appendNum(1)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">1</button>
+            <button onclick="appendNum(2)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">2</button>
+            <button onclick="appendNum(3)" class="py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">3</button>
+            <button onclick="setOperator(1, '+')" class="py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95">+</button>
+
+            <!-- Row 5 -->
+            <button onclick="appendNum(0)" class="col-span-2 py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95">0</button>
+            <button onclick="calculate()" class="col-span-2 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-2xl text-white text-xl font-semibold shadow-lg shadow-indigo-500/20 transition-all duration-150 active:scale-95">=</button>
+        </div>
+    </div>
+
+    <!-- Info Footer -->
+    <div class="mt-8 text-center text-xs text-gray-500 font-mono">
+        <p>This UI routes input requests through a local server that invokes the</p>
+        <p class="text-indigo-400 mt-1">Calesteria native compiled binary directly on WSL/Linux</p>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        let currentInput = "";
+        let previousInput = "";
+        let opCode = null;
+        let opSymbol = "";
+
+        const resultDisplay = document.getElementById("result-display");
+        const equationDisplay = document.getElementById("equation-display");
+        const statusIndicator = document.getElementById("status-indicator");
+
+        function appendNum(num) {
+            if (currentInput === "0") {
+                currentInput = num.toString();
+            } else {
+                currentInput += num.toString();
+            }
+            updateDisplay();
+        }
+
+        function setOperator(code, symbol) {
+            if (currentInput === "") return;
+            opCode = code;
+            opSymbol = symbol;
+            previousInput = currentInput;
+            currentInput = "";
+            updateDisplay();
+        }
+
+        function clearAll() {
+            currentInput = "";
+            previousInput = "";
+            opCode = null;
+            opSymbol = "";
+            updateDisplay();
+        }
+
+        function deleteLast() {
+            currentInput = currentInput.slice(0, -1);
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            resultDisplay.textContent = currentInput || "0";
+            if (opCode && previousInput) {
+                equationDisplay.textContent = `${previousInput} ${opSymbol} ${currentInput}`;
+            } else {
+                equationDisplay.textContent = currentInput || "";
+            }
+        }
+
+        async function calculate() {
+            if (!opCode || !previousInput || !currentInput) return;
+
+            const a = parseInt(previousInput);
+            const b = parseInt(currentInput);
+            
+            // Show status indicator
+            statusIndicator.classList.remove("opacity-0");
+
+            try {
+                const response = await fetch(`/api/calculate?op=${opCode}&a=${a}&b=${b}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDisplay.textContent = data.result;
+                    equationDisplay.textContent = `${previousInput} ${opSymbol} ${currentInput} =`;
+                    currentInput = data.result.toString();
+                    opCode = null;
+                    opSymbol = "";
+                } else {
+                    resultDisplay.textContent = "Error";
+                }
+            } catch (err) {
+                resultDisplay.textContent = "Offline";
+            } finally {
+                // Hide status indicator after execution
+                setTimeout(() => {
+                    statusIndicator.classList.add("opacity-0");
+                }, 1000);
+            }
+        }
+    </script>
+</body>
+</html>

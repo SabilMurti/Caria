@@ -1,0 +1,17 @@
+rune calculate(op: int, a: int, b: int) -> int {
+    ret when op {
+        1 => a + b,
+        2 => a - b,
+        3 => a * b,
+        4 => a / b,
+        else => 0
+    }
+}
+
+rune main() -> int {
+    op = get_env_int("OP")
+    a = get_env_int("A")
+    b = get_env_int("B")
+    say(calculate(op, a, b))
+    ret 0
+}
