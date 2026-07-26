@@ -13,3 +13,5 @@ object = "0.32"
 target-lexicon = "0.12"
 caria_parser = { path = "../caria_parser" }
 caria_lexer = { path = "../caria_lexer" }
+tiny_http = "0.12"
+once_cell = "1.18"

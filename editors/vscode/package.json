@@ -1,0 +1,43 @@
+{
+    "name": "calesteria-vscode",
+    "displayName": "Calesteria Support",
+    "description": "Rich editor support for the Calesteria programming language",
+    "version": "0.1.0",
+    "publisher": "sabil-murti",
+    "engines": {
+        "vscode": "^1.75.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "icon": "icon.png",
+    "main": "./src/extension.js",
+    "activationEvents": [
+        "onLanguage:calesteria"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "calesteria",
+                "aliases": [
+                    "Calesteria",
+                    "calesteria"
+                ],
+                "extensions": [
+                    ".caria"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "calesteria",
+                "scopeName": "source.caria",
+                "path": "./syntaxes/calesteria.tmLanguage.json"
+            }
+        ]
+    },
+    "dependencies": {
+        "vscode-languageclient": "^8.1.0"
+    }
+}

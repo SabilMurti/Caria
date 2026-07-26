@@ -9,7 +9,11 @@ rune benchmark_billion() -> int {
         while j < 1000 {
             k := 0
             while k < 1000 {
-                count = count + 1
+                l := 0
+                while l < 10 {
+                    count = count + 1
+                    l = l + 1
+                }
                 k = k + 1
             }
             j = j + 1

@@ -1,6 +1,0 @@
-// Calesteria Framework Console Script (Laravel Artisan Equivalent)
-// Handles `caria cast serve`, `caria cast make:controller`, `caria cast make:model`
-
-rune main() {
-    say("✨ Calesteria Framework Console")
-}

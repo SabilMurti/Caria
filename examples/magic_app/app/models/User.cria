@@ -1,7 +1,0 @@
-// Model: User
-
-model User {
-    id: int,
-    created_at: txt,
-    updated_at: txt
-}

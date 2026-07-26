@@ -1,5 +1,0 @@
-// Controller: UserController
-
-rune index() -> txt {
-    ret "Hello from UserController"
-}
