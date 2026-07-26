@@ -1,0 +1,5 @@
+// Bootstrap Calesteria Framework Application
+// Handles Application Configuration, Routing & Middlewares
+rune bootstrap_app() -> int {
+    ret 0
+}

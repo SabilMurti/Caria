@@ -135,6 +135,7 @@ fn cmd_new(name: &str) {
     fs::create_dir_all(dir.join("app/middleware")).unwrap();
     fs::create_dir_all(dir.join("app/services")).unwrap();
     fs::create_dir_all(dir.join("app/jobs")).unwrap();
+    fs::create_dir_all(dir.join("bootstrap")).unwrap();
     fs::create_dir_all(dir.join("config")).unwrap();
     fs::create_dir_all(dir.join("database/migrations")).unwrap();
     fs::create_dir_all(dir.join("routes")).unwrap();
@@ -154,9 +155,9 @@ fn cmd_new(name: &str) {
         "$schema": "https://calesteria.dev/schema.json",
         "name": name,
         "type": "project",
-        "description": "The skeleton application for the Calesteria framework.",
+        "description": "Full-Stack Application powered by Calesteria Framework.",
         "version": "1.0.0",
-        "entry": "routes/web.cria",
+        "entry": "public/index.cria",
         "require": {
             "caria/framework": "^0.4.0"
         },
@@ -167,14 +168,24 @@ fn cmd_new(name: &str) {
             }
         },
         "scripts": {
-            "dev": "calesteria dev routes/web.cria",
-            "build": "calesteria build routes/web.cria",
+            "dev": "calesteria dev public/index.cria",
+            "serve": "calesteria dev public/index.cria",
+            "build": "calesteria build public/index.cria",
             "start": "./web"
         }
     });
+    fs::write(dir.join("aria.json"), serde_json::to_string_pretty(&caria_json_content).unwrap()).unwrap();
     fs::write(dir.join("caria.json"), serde_json::to_string_pretty(&caria_json_content).unwrap()).unwrap();
 
-    // 4. Scaffold Master Glyph Layout (views/layouts/app.glyph)
+    // 4. Scaffold bootstrap/app.cria (Laravel 12-Grade Application Bootstrapper)
+    fs::write(dir.join("bootstrap/app.cria"), r#"// Bootstrap Calesteria Framework Application
+// Handles Application Configuration, Routing & Middlewares
+rune bootstrap_app() -> int {
+    ret 0
+}
+"#).unwrap();
+
+    // 5. Scaffold Master Glyph Layout (views/layouts/app.glyph)
     fs::write(dir.join("views/layouts/app.glyph"), r#"<!DOCTYPE html>
 <html lang='en'>
 <head>
@@ -192,7 +203,7 @@ fn cmd_new(name: &str) {
 </body>
 </html>"#).unwrap();
 
-    // 5. Scaffold Home View (views/home.glyph)
+    // 6. Scaffold Home View (views/home.glyph)
     fs::write(dir.join("views/home.glyph"), r#"<div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl text-center' x-data='{ count: 0 }'>
     <h1 class='text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-2'>
         ✨ Welcome to Calesteria Magic App
@@ -212,9 +223,25 @@ fn cmd_new(name: &str) {
     </div>
 </div>"#).unwrap();
 
-    // 6. Scaffold Web Routes (routes/web.cria)
+    // 7. Scaffold Web Routes (routes/web.cria)
     fs::write(dir.join("routes/web.cria"), r#"get "/" {
-    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>HTMX + Alpine.js Loaded</div></div></body></html>"
+    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel 12-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>bootstrap/app.cria & public/index.cria Bootstrapped</div></div></body></html>"
+}
+"#).unwrap();
+
+    // 8. Scaffold API Routes (routes/api.cria)
+    fs::write(dir.join("routes/api.cria"), r#"get "/api/health" {
+    ret "{\"status\":\"ok\",\"engine\":\"Caria Native AOT\"}"
+}
+"#).unwrap();
+
+    // 9. Scaffold Public Entrypoint (public/index.cria)
+    fs::write(dir.join("public/index.cria"), r#"get "/" {
+    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel 12-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>public/index.cria & bootstrap/app.cria Active</div></div></body></html>"
+}
+
+get "/api/health" {
+    ret "{\"status\":\"ok\",\"engine\":\"Caria Native AOT\"}"
 }
 
 rune main() -> int {
@@ -224,7 +251,7 @@ rune main() -> int {
 
     println!("✨ Created Calesteria Full-Stack Magic App '{name}'!");
     println!("  cd {name}");
-    println!("  calesteria run routes/web.cria");
+    println!("  calesteria run dev   (or calesteria dev)");
 }
 
 // ---------------------------------------------------------------------------

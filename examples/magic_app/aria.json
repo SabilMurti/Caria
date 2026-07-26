@@ -1,0 +1,23 @@
+{
+  "$schema": "https://calesteria.dev/schema.json",
+  "autoload": {
+    "cria": {
+      "App\\": "app/",
+      "Database\\": "database/"
+    }
+  },
+  "description": "Full-Stack Application powered by Calesteria Framework.",
+  "entry": "public/index.cria",
+  "name": "magic_app",
+  "require": {
+    "caria/framework": "^0.4.0"
+  },
+  "scripts": {
+    "build": "calesteria build public/index.cria",
+    "dev": "calesteria dev public/index.cria",
+    "serve": "calesteria dev public/index.cria",
+    "start": "./web"
+  },
+  "type": "project",
+  "version": "1.0.0"
+}
