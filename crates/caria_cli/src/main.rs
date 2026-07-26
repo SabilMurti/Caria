@@ -416,6 +416,19 @@ void caria_start_server(long long port) {
     }
 }
 
+fn cmd_build_wasm(file_path: &str, format_json: bool) {
+    let program = parse_and_check(file_path, format_json);
+    let codegen = caria_codegen_wasm::WasmCodegen::new();
+    let wasm_bytes = codegen.generate(&program);
+
+    let base_path = Path::new(file_path);
+    let file_stem = base_path.file_stem().unwrap().to_str().unwrap();
+    let output_wasm_path = format!("{}.wasm", file_stem);
+
+    fs::write(&output_wasm_path, &wasm_bytes).expect("Failed to write WebAssembly file");
+    println!("Built WebAssembly module: {}", output_wasm_path);
+}
+
 fn cmd_run_native(file_path: &str, format_json: bool) {
     let program = parse_and_check(file_path, format_json);
     match caria_codegen_native::NativeCompiler::compile_to_jit(&program) {
@@ -561,12 +574,19 @@ fn main() {
         }
         "build" => {
             let mut format_json = false;
+            let mut target_wasm = false;
             let mut file = None;
             
             let mut i = 2;
             while i < args.len() {
                 if args[i] == "--format" && i + 1 < args.len() && args[i+1] == "json" {
                     format_json = true;
+                    i += 2;
+                } else if args[i] == "--wasm" {
+                    target_wasm = true;
+                    i += 1;
+                } else if args[i] == "--target" && i + 1 < args.len() && args[i+1] == "wasm" {
+                    target_wasm = true;
                     i += 2;
                 } else {
                     file = Some(args[i].clone());
@@ -575,7 +595,11 @@ fn main() {
             }
             
             let file_path = file.unwrap_or_else(|| parse_config("calesteria.toml").entry);
-            cmd_build_native(&file_path, format_json);
+            if target_wasm {
+                cmd_build_wasm(&file_path, format_json);
+            } else {
+                cmd_build_native(&file_path, format_json);
+            }
         }
         "run" => {
             let mut format_json = false;

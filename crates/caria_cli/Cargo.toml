@@ -7,6 +7,7 @@ edition = "2021"
 caria_lexer = { path = "../caria_lexer" }
 caria_parser = { path = "../caria_parser" }
 caria_codegen_native = { path = "../caria_codegen_native" }
+caria_codegen_wasm = { path = "../caria_codegen_wasm" }
 caria_diagnostic = { path = "../caria_diagnostic" }
 caria_lsp = { path = "../caria_lsp" }
 caria_formatter = { path = "../caria_formatter" }
