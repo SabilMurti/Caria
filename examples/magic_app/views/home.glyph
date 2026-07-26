@@ -1,0 +1,18 @@
+<div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl text-center' x-data='{ count: 0 }'>
+    <h1 class='text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-2'>
+        ✨ Welcome to Calesteria Magic App
+    </h1>
+    <p class='text-sm text-gray-400 mb-6'>
+        Powered by Caria AOT Compiler Engine & Glyph Template System
+    </p>
+
+    <div class='flex items-center justify-center space-x-4 mb-6'>
+        <button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button>
+        <span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span>
+        <button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button>
+    </div>
+
+    <div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>
+        Alpine.js Micro-State + HTMX SSR Ready
+    </div>
+</div>

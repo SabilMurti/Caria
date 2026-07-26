@@ -19,8 +19,8 @@ struct CariaConfig {
 fn parse_config(path: &str) -> CariaConfig {
     let content = fs::read_to_string(path).unwrap_or_default();
     let mut cfg = CariaConfig {
-        mode: "script".into(),
-        entry: "main.caria".into(),
+        mode: "server".into(),
+        entry: "routes/web.cria".into(),
         ..Default::default()
     };
     for line in content.lines() {
@@ -124,21 +124,83 @@ fn cmd_new(name: &str) {
         eprintln!("Error: directory '{}' already exists.", name);
         std::process::exit(1);
     }
-    fs::create_dir_all(dir.join("src")).expect("Failed to create project directory");
 
-    fs::write(dir.join("calesteria.toml"), format!(
-        "name = \"{name}\"\nentry = \"src/main.caria\"\nmode = \"script\"\n"
-    )).expect("Failed to write calesteria.toml");
+    // 1. Create Laravel-grade directory structure
+    fs::create_dir_all(dir.join("app/controllers/Auth")).unwrap();
+    fs::create_dir_all(dir.join("app/models")).unwrap();
+    fs::create_dir_all(dir.join("app/middleware")).unwrap();
+    fs::create_dir_all(dir.join("app/services")).unwrap();
+    fs::create_dir_all(dir.join("app/jobs")).unwrap();
+    fs::create_dir_all(dir.join("config")).unwrap();
+    fs::create_dir_all(dir.join("database/migrations")).unwrap();
+    fs::create_dir_all(dir.join("routes")).unwrap();
+    fs::create_dir_all(dir.join("views/layouts")).unwrap();
+    fs::create_dir_all(dir.join("views/components")).unwrap();
+    fs::create_dir_all(dir.join("public/css")).unwrap();
+    fs::create_dir_all(dir.join("public/js")).unwrap();
+    fs::create_dir_all(dir.join("storage/logs")).unwrap();
+    fs::create_dir_all(dir.join("spells")).unwrap();
+    fs::create_dir_all(dir.join("tests")).unwrap();
 
-    fs::write(dir.join("src/main.caria"), r#"rune main() {
-    x := 42
-    say(x)
+    // 2. Scaffold .env
+    fs::write(dir.join(".env"), "APP_NAME=\"Calesteria Magic App\"\nAPP_ENV=\"development\"\nPORT=8080\nDB_URL=\"sqlite://app.db\"\n").unwrap();
+
+    // 3. Scaffold Caria.config
+    fs::write(dir.join("Caria.config"), format!(
+        "name = \"{name}\"\nentry = \"routes/web.cria\"\nmode = \"server\"\nport = 8080\n"
+    )).unwrap();
+
+    // 4. Scaffold Master Glyph Layout (views/layouts/app.glyph)
+    fs::write(dir.join("views/layouts/app.glyph"), r#"<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>Calesteria Magic App</title>
+    <script src='https://cdn.tailwindcss.com'></script>
+    <script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script>
+    <script src='https://unpkg.com/htmx.org@1.9.10'></script>
+</head>
+<body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center'>
+    <main class='w-full max-w-xl p-6'>
+        {{SLOT}}
+    </main>
+</body>
+</html>"#).unwrap();
+
+    // 5. Scaffold Home View (views/home.glyph)
+    fs::write(dir.join("views/home.glyph"), r#"<div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 shadow-2xl text-center' x-data='{ count: 0 }'>
+    <h1 class='text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-2'>
+        ✨ Welcome to Calesteria Magic App
+    </h1>
+    <p class='text-sm text-gray-400 mb-6'>
+        Powered by Caria AOT Compiler Engine & Glyph Template System
+    </p>
+
+    <div class='flex items-center justify-center space-x-4 mb-6'>
+        <button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button>
+        <span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span>
+        <button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button>
+    </div>
+
+    <div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>
+        Alpine.js Micro-State + HTMX SSR Ready
+    </div>
+</div>"#).unwrap();
+
+    // 6. Scaffold Web Routes (routes/web.cria)
+    fs::write(dir.join("routes/web.cria"), r#"get "/" {
+    ret "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Calesteria Magic App</title><script src='https://cdn.tailwindcss.com'></script><script defer src='https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js'></script><script src='https://unpkg.com/htmx.org@1.9.10'></script></head><body class='bg-gray-950 text-gray-100 min-h-screen flex flex-col items-center justify-center p-4'><div class='bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md w-full shadow-2xl' x-data='{ count: 0 }'><h1 class='text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-3'>✨ Calesteria Magic App</h1><p class='text-xs text-gray-400 mb-6'>Laravel-Grade Architecture — 100% Native AOT Caria Server</p><div class='flex items-center justify-center space-x-4 mb-6'><button @click='count--' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>-</button><span class='text-3xl font-mono text-indigo-400' x-text='count'>0</span><button @click='count++' class='px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-white font-bold transition'>+</button></div><div class='text-xs text-gray-500 font-mono border-t border-gray-800 pt-4'>HTMX + Alpine.js Loaded</div></div></body></html>"
 }
-"#).expect("Failed to write main.caria");
 
-    println!("Created project '{name}'.");
+rune main() -> int {
+    ret 0
+}
+"#).unwrap();
+
+    println!("✨ Created Calesteria Full-Stack Magic App '{name}'!");
     println!("  cd {name}");
-    println!("  calesteria run src/main.caria");
+    println!("  calesteria run routes/web.cria");
 }
 
 // ---------------------------------------------------------------------------
@@ -579,9 +641,12 @@ fn cmd_doc(file_path: &str) {
 }
 
 fn cmd_spec() {
-    let spec = r#"Calesteria Programming Language Specification
- - File Extension: .caria
- - Compiles directly to native executables via Cranelift
+    let spec = r#"Caria Programming Language Specification
+ - Language Name: Caria
+ - Primary Extension: .cria (also supports .aria / .caria)
+ - Framework: Calesteria Web Framework
+ - Template Engine: Glyph (.glyph)
+ - Compiles directly to native executables via Cranelift AOT & WASM
  - Types: int, dec, txt, flag, nil, [T] (Lists), [K:V] (Maps)
  - Keywords: rune, ret, say, env, if, else, unless, when, guard, while, for, in, step, get, post, put, patch, delete, model, parallel, defer, retry, times, timeout, with, validate, stream, transaction, queue, cache, js, view, style, client, int, dec, txt, flag, true, false, nil, and, or, not, is, as
  - Operators: :=, ?, ?=, =>, |>, ?., ??, ..
@@ -599,17 +664,17 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        println!("Calesteria 0.4.0 (Native Cranelift compiler)");
+        println!("✨ Caria Language / Calesteria Web Framework 0.4.0");
         println!("Usage:");
-        println!("  calesteria build <file>     Compile .caria to native standalone executable");
-        println!("  calesteria run <file>       Compile and execute JIT natively");
+        println!("  calesteria new <app-name>   Scaffold a new Calesteria magic MVC project");
+        println!("  calesteria build <file>     Compile .cria to native executable");
+        println!("  calesteria run <file>       Compile and run .cria natively");
+        println!("  calesteria dev              Start hot-reloading dev server");
         println!("  calesteria lsp              Start LSP Server");
-        println!("  calesteria fmt <file>       Format a .caria file");
+        println!("  calesteria fmt <file>       Format a .cria file");
         println!("  calesteria mcp              Start MCP Server");
         println!("  calesteria repl             Start REPL session");
-        println!("  calesteria dev <file>       Start dev server / watcher");
-        println!("  calesteria doc <file>       Generate HTML documentation for a .caria file");
-        println!("  calesteria spec             Output LLM-friendly language spec");
+        println!("  calesteria spec             Output LLM-friendly Caria spec");
         return;
     }
 
