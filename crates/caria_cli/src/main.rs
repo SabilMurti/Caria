@@ -268,6 +268,14 @@ void caria_start_server(long long port) {
         printf("[Server] Parsed Path='%s' Query='%s'\n", path, query);
         fflush(stdout);
 
+        // Clear previous request environment variables
+        unsetenv("CUR");
+        unsetenv("PREV");
+        unsetenv("OP");
+        unsetenv("BTN");
+        unsetenv("A");
+        unsetenv("B");
+
         // Parse query params and set env variables
         if (q_mark) {
             char* p = q_mark + 1;
@@ -389,14 +397,14 @@ void caria_start_server(long long port) {
                     char* final_html = (char*)malloc(resp_len);
                     strcpy(final_html, raw_html);
 
-                    // Helper macro for safe string replacement
+                    // Helper macro for safe heap string replacement without buffer overflows
                     #define REPLACE_TAG(tag, val_s) { \
                         char* p = strstr(final_html, tag); \
                         if (p) { \
-                            char rest[4096] = {0}; \
-                            strcpy(rest, p + strlen(tag)); \
+                            char* rest = strdup(p + strlen(tag)); \
                             strcpy(p, val_s); \
                             strcat(p, rest); \
+                            free(rest); \
                         } \
                     }
 
