@@ -327,39 +327,83 @@ void caria_start_server(long long port) {
                     const char* raw_html = (const char*)res_val;
                     if (!raw_html) raw_html = "<h1>Empty View</h1>";
                     
-                    // SSR Calculation & Template Interpolation
-                    long long calc_res = 0;
-                    int has_params = 0;
+                    // SSR Grid Button State Machine Calculation
+                    long long cur_val = getenv("CUR") ? atoll(getenv("CUR")) : 0;
+                    long long prev_val = getenv("PREV") ? atoll(getenv("PREV")) : 0;
+                    int op_val = getenv("OP") ? atoi(getenv("OP")) : 0;
+                    const char* btn = getenv("BTN");
+
+                    // Handle Form A/B/OP inputs if present
                     if (getenv("A") && getenv("B")) {
-                        has_params = 1;
-                        int a = atoi(getenv("A"));
-                        int b = atoi(getenv("B"));
+                        long long a = atoll(getenv("A"));
+                        long long b = atoll(getenv("B"));
                         int op = getenv("OP") ? atoi(getenv("OP")) : 1;
-                        if (op == 1) calc_res = a + b;
-                        else if (op == 2) calc_res = a - b;
-                        else if (op == 3) calc_res = a * b;
-                        else if (op == 4) calc_res = (b != 0) ? (a / b) : 0;
+                        if (op == 1) cur_val = a + b;
+                        else if (op == 2) cur_val = a - b;
+                        else if (op == 3) cur_val = a * b;
+                        else if (op == 4) cur_val = (b != 0) ? (a / b) : 0;
                     }
 
-                    char res_str[64];
-                    if (has_params) {
-                        sprintf(res_str, "%lld", calc_res);
-                    } else {
-                        sprintf(res_str, "Ready (0)");
+                    if (btn) {
+                        if (strcmp(btn, "AC") == 0) {
+                            cur_val = 0;
+                            prev_val = 0;
+                            op_val = 0;
+                        } else if (strcmp(btn, "DEL") == 0) {
+                            cur_val = cur_val / 10;
+                        } else if (strcmp(btn, "PLUS") == 0 || strcmp(btn, "+") == 0) {
+                            prev_val = cur_val;
+                            cur_val = 0;
+                            op_val = 1;
+                        } else if (strcmp(btn, "MINUS") == 0 || strcmp(btn, "-") == 0) {
+                            prev_val = cur_val;
+                            cur_val = 0;
+                            op_val = 2;
+                        } else if (strcmp(btn, "MUL") == 0 || strcmp(btn, "*") == 0) {
+                            prev_val = cur_val;
+                            cur_val = 0;
+                            op_val = 3;
+                        } else if (strcmp(btn, "DIV") == 0 || strcmp(btn, "/") == 0) {
+                            prev_val = cur_val;
+                            cur_val = 0;
+                            op_val = 4;
+                        } else if (strcmp(btn, "EQ") == 0 || strcmp(btn, "=") == 0) {
+                            if (op_val == 1) cur_val = prev_val + cur_val;
+                            else if (op_val == 2) cur_val = prev_val - cur_val;
+                            else if (op_val == 3) cur_val = prev_val * cur_val;
+                            else if (op_val == 4) cur_val = (cur_val != 0) ? (prev_val / cur_val) : 0;
+                            prev_val = 0;
+                            op_val = 0;
+                        } else if (btn[0] >= '0' && btn[0] <= '9') {
+                            int digit = btn[0] - '0';
+                            cur_val = cur_val * 10 + digit;
+                        }
                     }
+
+                    char cur_str[64]; sprintf(cur_str, "%lld", cur_val);
+                    char prev_str[64]; sprintf(prev_str, "%lld", prev_val);
+                    char op_str[16]; sprintf(op_str, "%d", op_val);
 
                     size_t raw_len = strlen(raw_html);
-                    size_t resp_len = raw_len + 4096;
+                    size_t resp_len = raw_len + 8192;
                     char* final_html = (char*)malloc(resp_len);
                     strcpy(final_html, raw_html);
 
-                    char* pos = strstr(final_html, "{{RESULT}}");
-                    if (pos) {
-                        char rest[4096] = {0};
-                        strcpy(rest, pos + 10);
-                        strcpy(pos, res_str);
-                        strcat(pos, rest);
+                    // Helper macro for safe string replacement
+                    #define REPLACE_TAG(tag, val_s) { \
+                        char* p = strstr(final_html, tag); \
+                        if (p) { \
+                            char rest[4096] = {0}; \
+                            strcpy(rest, p + strlen(tag)); \
+                            strcpy(p, val_s); \
+                            strcat(p, rest); \
+                        } \
                     }
+
+                    REPLACE_TAG("{{RESULT}}", cur_str);
+                    REPLACE_TAG("{{CUR}}", cur_str);
+                    REPLACE_TAG("{{PREV}}", prev_str);
+                    REPLACE_TAG("{{OP}}", op_str);
 
                     size_t final_len = strlen(final_html);
                     char* response = (char*)malloc(final_len + 1024);
