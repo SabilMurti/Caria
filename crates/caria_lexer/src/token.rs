@@ -2,103 +2,159 @@ use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token {
-    // Keywords
-    #[token("fn")] Fn,
-    #[token("let")] Let,
-    #[token("mut")] Mut,
-    #[token("ret")] Ret,
-    #[token("pub")] Pub,
-    #[token("mod")] Mod,
-    #[token("use")] Use,
-    #[token("if")] If,
-    #[token("else")] Else,
-    #[token("match")] Match,
-    #[token("for")] For,
-    #[token("while")] While,
-    #[token("in")] In,
-    #[token("break")] Break,
-    #[token("struct")] Struct,
-    #[token("enum")] Enum,
-    #[token("trait")] Trait,
-    #[token("impl")] Impl,
-    #[token("self")] SelfKw,
-    #[token("as")] As,
-    #[token("is")] Is,
-    #[token("route")] Route,
-    #[token("view")] View,
-    #[token("query")] Query,
-    #[token("serve")] Serve,
-    #[token("state")] State,
-    #[token("nil")] Nil,
-    #[token("true")] True,
-    #[token("false")] False,
-    #[token("and")] And,
-    #[token("or")] Or,
-    #[token("not")] Not,
+    // ── V2 Keywords ────────────────────────────────────────────────────────────
 
-    // Operators & Punctuation
-    #[token("+")] Plus,
-    #[token("-")] Minus,
-    #[token("*")] Star,
-    #[token("/")] Slash,
-    #[token("%")] Percent,
-    
-    #[token("==")] EqEq,
-    #[token("!=")] NotEq,
-    #[token("<")] Less,
-    #[token(">")] Greater,
-    #[token("<=")] LessEq,
-    #[token(">=")] GreaterEq,
-    
-    #[token("=")] Eq,
-    #[token("+=")] PlusEq,
-    #[token("-=")] MinusEq,
-    #[token("*=")] StarEq,
-    #[token("/=")] SlashEq,
+    // Core
+    #[token("rune")]        Rune,           // function declaration (replaces fn)
+    #[token("ret")]         Ret,            // return value
+    #[token("say")]         Say,            // print to stdout
+    #[token("env")]         Env,            // read environment variable
 
-    #[token("->")] Arrow,
-    #[token("=>")] FatArrow,
-    #[token("|>")] Pipe,
-    #[token("|")] Bar,
-    #[token("..")] Range,
-    #[token("?.")] SafeChain,
-    #[token("??")] Coalesce,
-    #[token("?")] Question,
-    #[token("!")] Bang,
+    // Control Flow
+    #[token("if")]          If,
+    #[token("else")]        Else,
+    #[token("unless")]      Unless,         // inverted if (unless x { })
+    #[token("when")]        When,           // Kotlin-style pattern match
+    #[token("guard")]       Guard,          // Swift-style early-exit guard
+    #[token("while")]       While,
+    #[token("for")]         For,
+    #[token("in")]          In,
+    #[token("step")]        Step,           // range step: for i in 0..10 step 2
+
+    // HTTP Routing (native keywords)
+    #[token("get")]         Get,
+    #[token("post")]        Post,
+    #[token("put")]         Put,
+    #[token("patch")]       Patch,
+    #[token("delete")]      Delete,
+
+    // Database / ORM
+    #[token("model")]       Model,
+
+    // Async / Concurrency
+    #[token("parallel")]    Parallel,
+    #[token("defer")]       Defer,
+    #[token("retry")]       Retry,
+    #[token("times")]       Times,
+    #[token("timeout")]     Timeout,
+    #[token("with")]        With,
+
+    // Web Blocks
+    #[token("validate")]    Validate,
+    #[token("stream")]      Stream,
+    #[token("transaction")] Transaction,
+    #[token("queue")]       Queue,
+    #[token("cache")]       Cache,
+    #[token("js")]          Js,             // escape hatch to raw JS block
+
+    // View / Template
+    #[token("view")]        View,
+    #[token("style")]       Style,
+    #[token("client")]      Client,
+
+    // Primitive Type Keywords (used in type annotations)
+    #[token("int")]         IntType,        // 64-bit integer
+    #[token("dec")]         DecType,        // exact decimal (no float errors)
+    #[token("txt")]         TxtType,        // UTF-8 string
+    #[token("flag")]        FlagType,       // boolean
+
+    // Boolean / Nil Literals
+    #[token("true")]        True,
+    #[token("false")]       False,
+    #[token("nil")]         Nil,
+
+    // Logical Operators (word form)
+    #[token("and")]         And,
+    #[token("or")]          Or,
+    #[token("not")]         Not,
+    #[token("is")]          Is,
+    #[token("as")]          As,
+
+    // ── Operators & Punctuation ──────────────────────────────────────────────
+
+    // Arithmetic
+    #[token("+")]   Plus,
+    #[token("-")]   Minus,
+    #[token("*")]   Star,
+    #[token("/")]   Slash,
+    #[token("%")]   Percent,
+
+    // Comparison
+    #[token("==")]  EqEq,
+    #[token("!=")]  NotEq,
+    #[token("<")]   Less,
+    #[token(">")]   Greater,
+    #[token("<=")]  LessEq,
+    #[token(">=")]  GreaterEq,
+
+    // Assignment Operators (multi-char first to avoid prefix conflicts)
+    #[token(":=")]  Walrus,         // mutable variable declaration
+    #[token("+=")]  PlusEq,
+    #[token("-=")]  MinusEq,
+    #[token("*=")]  StarEq,
+    #[token("/=")]  SlashEq,
+    #[token("?=")]  NilAssign,      // assign only if nil
+    #[token("=")]   Eq,             // constant assignment / reassignment
+
+    // Special Operators (multi-char first)
+    #[token("->")]  Arrow,          // return type annotation
+    #[token("=>")]  FatArrow,       // inline rune body / when arm
+    #[token("|>")]  Pipe,           // pipe operator
+    #[token("?.")]  SafeChain,      // nil-safe member access
+    #[token("??")]  Coalesce,       // null coalescing
+    #[token("..")]  Range,          // range operator
+
+    // Single-char Symbols
+    #[token("@")]   At,             // decorator prefix
+    #[token("!")]   Bang,
+    #[token("?")]   Question,
+    #[token(".")]   Dot,
+    #[token(",")]   Comma,
+    #[token(":")]   Colon,
+    #[token(";")]   Semi,
     #[token("_", priority = 3)] Underscore,
-    #[token(".")] Dot,
-    #[token(",")] Comma,
-    #[token(":")] Colon,
+    #[token("|")]   Bar,
 
-    #[token("(")] LParen,
-    #[token(")")] RParen,
-    #[token("{")] LBrace,
-    #[token("}")] RBrace,
-    #[token("[")] LBracket,
-    #[token("]")] RBracket,
+    // Brackets
+    #[token("(")]   LParen,
+    #[token(")")]   RParen,
+    #[token("{")]   LBrace,
+    #[token("}")]   RBrace,
+    #[token("[")]   LBracket,
+    #[token("]")]   RBracket,
 
-    // Literals
+    // ── Literals ─────────────────────────────────────────────────────────────
+
+    // Float / Decimal literal (must be before Int to avoid partial match)
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().ok())]
     Float(f64),
 
+    // Integer literal
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Int(i64),
 
-    // Identifiers (e.g. variable names)
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
-    Ident(String),
-
-    // Strings
+    // String literal (double-quoted, supports escape sequences)
     #[regex(r#""(?:[^"\\]|\\.)*""#, |lex| {
         let s = lex.slice();
-        s[1..s.len()-1].to_string() // Strip quotes
+        Some(s[1..s.len()-1].to_string())
     })]
     Str(String),
 
-    // Ignored
+    // Identifiers (must come after all keyword tokens)
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
+    Ident(String),
+
+    // ── Comments ─────────────────────────────────────────────────────────────
+
+    // Doc comments (/// ...) — preserved for tooling
+    #[regex(r"///[^\n]*", |lex| lex.slice()[3..].trim().to_string(), allow_greedy = true)]
+    DocComment(String),
+
+    // Single-line comments — skipped
     #[regex(r"//[^\n]*", logos::skip, allow_greedy = true)]
     Comment,
 
+    // Whitespace — skipped
     #[regex(r"[ \t\n\f]+", logos::skip)]
     Whitespace,
 }

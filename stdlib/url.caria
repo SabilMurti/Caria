@@ -1,0 +1,20 @@
+use std.std_internal {
+    url_encode_internal,
+    url_decode_internal,
+    url_parse_query_internal
+}
+
+/// URL encode a string.
+pub fn encode(s: Str) -> Str {
+    ret url_encode_internal(s)
+}
+
+/// URL decode a string.
+pub fn decode(s: Str) -> Str {
+    ret url_decode_internal(s)
+}
+
+/// Parse a query string into a map.
+pub fn parseQuery(query_str: Str) -> Map<Str, Str> {
+    ret url_parse_query_internal(query_str)
+}

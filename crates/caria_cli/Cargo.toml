@@ -6,7 +6,14 @@ edition = "2021"
 [dependencies]
 caria_lexer = { path = "../caria_lexer" }
 caria_parser = { path = "../caria_parser" }
-caria_codegen_js = { path = "../caria_codegen_js" }
+caria_codegen_native = { path = "../caria_codegen_native" }
 caria_diagnostic = { path = "../caria_diagnostic" }
-
+caria_lsp = { path = "../caria_lsp" }
+caria_formatter = { path = "../caria_formatter" }
+caria_mcp = { path = "../caria_mcp" }
+caria_repl = { path = "../caria_repl" }
+caria_watch = { path = "../caria_watch" }
+serde_json = "1.0"
+ariadne = "0.3.0"
+tokio = { version = "1.0", features = ["full"] }
 # We don't strictly need more features for Phase 1 MVP

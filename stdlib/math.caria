@@ -1,0 +1,21 @@
+use std.std_internal { abs_internal, min_internal, max_internal, round_internal, random_internal }
+
+pub fn abs(x: Float) -> Float {
+    ret abs_internal(x)
+}
+
+pub fn min(x: Float, y: Float) -> Float {
+    ret min_internal(x, y)
+}
+
+pub fn max(x: Float, y: Float) -> Float {
+    ret max_internal(x, y)
+}
+
+pub fn round(x: Float) -> Int {
+    ret round_internal(x)
+}
+
+pub fn random() -> Float {
+    ret random_internal()
+}

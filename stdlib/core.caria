@@ -1,0 +1,16 @@
+use std.std_internal { parse_int_internal, parse_float_internal, str_internal }
+
+/// Parse a string into an integer. Returns nil if parsing fails.
+pub fn parseInt(s: Str) -> Int? {
+    ret parse_int_internal(s)
+}
+
+/// Parse a string into a float. Returns nil if parsing fails.
+pub fn parseFloat(s: Str) -> Float? {
+    ret parse_float_internal(s)
+}
+
+/// Convert any value to a string representation.
+pub fn str(val: Any) -> Str {
+    ret str_internal(val)
+}

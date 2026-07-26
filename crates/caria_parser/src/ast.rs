@@ -1,103 +1,115 @@
+// ── Calesteria V2 AST ────────────────────────────────────────────────────────
+// The root node of a Calesteria program.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+// ── Top-level Statements ─────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-    FnDecl(FnDecl),
-    LetStmt(LetStmt),
-    MutStmt(MutStmt),
-    AssignStmt(AssignStmt),
+    // Function / Rune
+    RuneDecl(RuneDecl),
+
+    // Variables
+    ConstDecl(ConstDecl),   // name = value  (immutable, keyword-less)
+    MutDecl(MutDecl),       // name := value (mutable)
+    AssignStmt(AssignStmt), // name = value  (reassignment of existing mut)
+
+    // Expressions used as statements
     ExprStmt(Expression),
-    IfExpr(IfExpr),
-    WhileStmt(WhileStmt),
-    ForStmt(ForStmt),
-    ForInStmt(ForInStmt),
-    StructDecl(StructDecl),
-    EnumDecl(EnumDecl),
-    ModDecl(ModDecl),
-    UseDecl(UseDecl),
+
+    // Control Flow
     RetStmt(Expression),
+    IfStmt(IfExpr),
+    UnlessStmt(UnlessStmt),
+    WhileStmt(WhileStmt),
+    ForRangeStmt(ForRangeStmt),   // for i in 0..10 step 2
+    ForInStmt(ForInStmt),         // for item in collection
+
+    // Early-exit guard
+    GuardStmt(GuardStmt),
+
+    // HTTP Routing
     RouteDecl(RouteDecl),
+
+    // Database / ORM
+    ModelDecl(ModelDecl),
+
+    // Async / Concurrency
+    ParallelBlock(ParallelBlock),
+    DeferStmt(DeferStmt),
+    RetryBlock(RetryBlock),
+
+    // Web Blocks
+    ValidateBlock(ValidateBlock),
+    TransactionBlock(TransactionBlock),
+    QueueStmt(QueueStmt),
+    StreamDecl(StreamDecl),
+
+    // View / Template
     ViewDecl(ViewDecl),
-    ServeStmt(ServeStmt),
+
+    // Raw JS Escape
+    JsBlock(JsBlock),
+
+    // Output
+    SayStmt(Expression),
+
+    // Tests
+    TestDecl(TestDecl),
 }
 
+// ── Rune (Function) ──────────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
-pub struct ModDecl {
+pub struct RuneDecl {
     pub name: String,
+    pub params: Vec<RuneParam>,
+    pub return_type: Option<TypeExpr>,
+    pub body: RuneBody,
+    pub is_public: bool,
+    pub doc_comment: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct UseDecl {
-    pub module: String,
-    pub is_npm: bool,
-    pub alias_import: bool, // true = `as alias` form → default import
-    pub symbols: Vec<String>,
-}
-#[derive(Debug, PartialEq, Clone)]
-pub struct EnumDecl {
+pub struct RuneParam {
     pub name: String,
-    pub variants: Vec<EnumVariant>,
+    pub type_expr: TypeExpr,
+    pub default_value: Option<Expression>,
 }
 
+/// Rune body: either a full block or an inline `=> expr` shorthand
 #[derive(Debug, PartialEq, Clone)]
-pub struct EnumVariant {
+pub enum RuneBody {
+    Block(Vec<Statement>),
+    Inline(Box<Expression>),  // rune double(x: int) -> int => x * 2
+}
+
+// ── Type Expressions ─────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub enum TypeExpr {
+    /// Primitive types: int, dec, txt, flag, nil
+    Named(String),
+    /// List type: [Type]
+    List(Box<TypeExpr>),
+    /// Map type: [Key:Value]
+    Map(Box<TypeExpr>, Box<TypeExpr>),
+    /// Optional / nullable type: Type?
+    Optional(Box<TypeExpr>),
+}
+
+// ── Variable Declarations ─────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub struct ConstDecl {
     pub name: String,
-    pub data: Option<Vec<StructField>>, // Similar to struct fields
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct WhileStmt {
-    pub condition: Box<Expression>,
-    pub body: Vec<Statement>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ForStmt {
-    pub var: String,
-    pub start: Box<Expression>,
-    pub end: Box<Expression>,
-    pub body: Vec<Statement>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ForInStmt {
-    pub item_var: String,
-    pub index_var: Option<String>,
-    pub collection: Box<Expression>,
-    pub body: Vec<Statement>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct StructDecl {
-    pub name: String,
-    pub fields: Vec<StructField>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct StructField {
-    pub name: String,
-    pub type_name: String, // Simplified type representation for now
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct IfExpr {
-    pub condition: Box<Expression>,
-    pub consequence: Vec<Statement>,
-    pub alternative: Option<Vec<Statement>>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct LetStmt {
-    pub name: String,
+    pub type_hint: Option<TypeExpr>,
     pub value: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct MutStmt {
+pub struct MutDecl {
     pub name: String,
+    pub type_hint: Option<TypeExpr>,
     pub value: Expression,
 }
 
@@ -107,117 +119,175 @@ pub struct AssignStmt {
     pub value: Expression,
 }
 
+// ── Control Flow ──────────────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
-pub struct FnDecl {
-    pub name: String,
-    pub params: Vec<FnParam>,
-    pub return_type: Option<String>,
+pub struct IfExpr {
+    pub condition: Box<Expression>,
+    pub consequence: Vec<Statement>,
+    pub alternative: Option<Vec<Statement>>,  // else { } or else if
+}
+
+/// unless condition { body }  ≡  if !condition { body }
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnlessStmt {
+    pub condition: Box<Expression>,
     pub body: Vec<Statement>,
 }
 
+/// guard condition else { fallback }
 #[derive(Debug, PartialEq, Clone)]
-pub struct FnParam {
-    pub name: String,
-    pub type_name: String,
-    pub default_value: Option<Expression>,
+pub struct GuardStmt {
+    pub condition: Box<Expression>,
+    pub fallback: Vec<Statement>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Expression {
-    Literal(Literal),
-    Identifier(String),
-    ClosureExpr {
-        params: Vec<String>,
-        body: Vec<Statement>,
-    },
-    IfExpr(IfExpr),
-    StructInst {
-        name: String,
-        fields: Vec<(String, Expression)>,
-    },
-    ArrayLiteral(Vec<Expression>),
-    MapLiteral(Vec<(Expression, Expression)>),
-    ErrorPropagate(Box<Expression>), // x?
-    MemberAccess {
-        object: Box<Expression>,
-        member: String,
-        is_safe: bool, // true for ?.
-    },
-    MatchExpr {
-        expr: Box<Expression>,
-        arms: Vec<(Pattern, Expression)>,
-    },
-    BinaryExpr {
-        left: Box<Expression>,
-        op: BinaryOp,
-        right: Box<Expression>,
-    },
-    CallExpr {
-        callee: Box<Expression>,
-        args: Vec<Expression>,
-    },
-    QueryExpr {
-        type_hint: Option<String>,   // T in query<T>(...)
-        sql: String,
-        params: Vec<Expression>,     // interpolated parameters
-    },
-    StateExpr {
-        initial: Box<Expression>,
-    },
+pub struct WhileStmt {
+    pub condition: Box<Expression>,
+    pub body: Vec<Statement>,
 }
 
+/// for i in start..end [step N]
 #[derive(Debug, PartialEq, Clone)]
-pub enum Literal {
-    Int(i64),
-    Float(f64),
-    Str(String),
-    Bool(bool),
-    Nil,
+pub struct ForRangeStmt {
+    pub var: String,
+    pub start: Box<Expression>,
+    pub end: Box<Expression>,
+    pub step: Option<Box<Expression>>,
+    pub body: Vec<Statement>,
 }
 
+/// for item [, index] in collection
 #[derive(Debug, PartialEq, Clone)]
-pub enum BinaryOp {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
-    Eq,
-    NotEq,
-    Less,
-    Greater,
-    LessEq,
-    GreaterEq,
-    And,
-    Or,
-    Coalesce, // ??
+pub struct ForInStmt {
+    pub item_var: String,
+    pub index_var: Option<String>,
+    pub collection: Box<Expression>,
+    pub body: Vec<Statement>,
 }
 
+// ── HTTP Routing ──────────────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
-pub enum Pattern {
-    Literal(Literal),
-    Wildcard,
-    Tuple(Vec<Pattern>),
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
 }
-// ── Phase 3: Web Server ─────────────────────────────────────────────────────
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct RouteDecl {
-    pub method: String,       // "GET", "POST", "PUT", "DELETE", "PATCH"
-    pub path: String,         // "/api/todos/{id}"
-    pub handler: FnDecl,      // anonymous fn body
+    pub method: HttpMethod,
+    pub path: String,       // "/users/{id}"
+    pub body: Vec<Statement>,
+    pub decorators: Vec<RouteDecorator>,
 }
 
+/// Route-level decorators: @rate_limit, @auth, @cors, etc.
+#[derive(Debug, PartialEq, Clone)]
+pub struct RouteDecorator {
+    pub name: String,
+    pub args: Vec<Expression>,
+}
+
+// ── Model / ORM ───────────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub struct ModelDecl {
+    pub name: String,
+    pub fields: Vec<ModelField>,
+    pub is_public: bool,
+    pub doc_comment: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ModelField {
+    pub name: String,
+    pub type_expr: TypeExpr,
+    pub tags: Vec<String>,              // [pk, auto, unique, index, encrypted, auto_now, ...]
+    pub default_value: Option<Expression>,
+}
+
+// ── Async / Concurrency ───────────────────────────────────────────────────────
+/// parallel { ... }  — concurrent statement execution
+#[derive(Debug, PartialEq, Clone)]
+pub struct ParallelBlock {
+    pub body: Vec<Statement>,
+}
+
+/// defer expr  — run at end of current scope
+#[derive(Debug, PartialEq, Clone)]
+pub struct DeferStmt {
+    pub expr: Box<Expression>,
+}
+
+/// retry N times [with timeout(Xs)] { ... }
+#[derive(Debug, PartialEq, Clone)]
+pub struct RetryBlock {
+    pub count: Box<Expression>,
+    pub timeout_secs: Option<Box<Expression>>,
+    pub body: Vec<Statement>,
+}
+
+// ── Web Blocks ────────────────────────────────────────────────────────────────
+/// validate(expr) as { field: Type [tags] }
+#[derive(Debug, PartialEq, Clone)]
+pub struct ValidateBlock {
+    pub target: Box<Expression>,
+    pub fields: Vec<ValidateField>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ValidateField {
+    pub name: String,
+    pub type_expr: TypeExpr,
+    pub rules: Vec<ValidateRule>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ValidateRule {
+    Required,
+    Email,
+    Url,
+    Min(Expression),
+    Max(Expression),
+    MinLen(Expression),
+    MaxLen(Expression),
+    Pattern(String),
+    Custom(String),
+}
+
+/// transaction { ... }
+#[derive(Debug, PartialEq, Clone)]
+pub struct TransactionBlock {
+    pub body: Vec<Statement>,
+}
+
+/// queue job_name(args)
+#[derive(Debug, PartialEq, Clone)]
+pub struct QueueStmt {
+    pub call: Box<Expression>,
+}
+
+/// stream "/path" { ... }
+#[derive(Debug, PartialEq, Clone)]
+pub struct StreamDecl {
+    pub path: String,
+    pub body: Vec<Statement>,
+}
+
+/// js { raw_code }  — raw JavaScript escape hatch
+#[derive(Debug, PartialEq, Clone)]
+pub struct JsBlock {
+    pub raw: String,
+}
+
+// ── View / HTML Template ──────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
 pub struct ViewDecl {
     pub name: String,
-    pub params: Vec<FnParam>,
+    pub params: Vec<RuneParam>,
     pub body: Vec<HtmlNode>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ServeStmt {
-    pub port: u16,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -229,7 +299,7 @@ pub enum HtmlNode {
         self_closing: bool,
     },
     Text(String),
-    Expr(Expression),     // {expr} interpolation
+    Expr(Expression),       // {expr} interpolation
     IfNode {
         condition: Box<Expression>,
         then: Vec<HtmlNode>,
@@ -246,4 +316,174 @@ pub enum HtmlNode {
 pub enum HtmlAttrValue {
     Static(String),
     Expr(Expression),
+}
+
+// ── Test Block ────────────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub struct TestDecl {
+    pub name: String,
+    pub body: Vec<Statement>,
+}
+
+// ── Expressions ───────────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub enum Expression {
+    Literal(Literal),
+    Identifier(String),
+
+    // Function call
+    CallExpr {
+        callee: Box<Expression>,
+        args: Vec<Expression>,
+    },
+
+    // Member access: obj.field or obj?.field (nil-safe)
+    MemberAccess {
+        object: Box<Expression>,
+        member: String,
+        is_safe: bool,          // true for ?.
+    },
+
+    // Index access: arr[i]
+    IndexExpr {
+        object: Box<Expression>,
+        index: Box<Expression>,
+    },
+
+    // Binary expression
+    BinaryExpr {
+        left: Box<Expression>,
+        op: BinaryOp,
+        right: Box<Expression>,
+    },
+
+    // Unary expression
+    UnaryExpr {
+        op: UnaryOp,
+        operand: Box<Expression>,
+    },
+
+    // Pipe: a |> b |> c
+    PipeExpr {
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
+
+    // Nil-coalescing assign: x ?= default
+    NilAssignExpr {
+        target: String,
+        default: Box<Expression>,
+    },
+
+    // when expr { arm => expr, else => expr }
+    WhenExpr {
+        subject: Box<Expression>,
+        arms: Vec<WhenArm>,
+    },
+
+    // if expr as expression (ternary-style)
+    IfExpr(Box<IfExpr>),
+
+    // Closure: { |params| body } or trailing { it ... }
+    ClosureExpr {
+        params: Vec<String>,
+        body: Vec<Statement>,
+    },
+
+    // Collection literals
+    ArrayLiteral(Vec<Expression>),
+    MapLiteral(Vec<(Expression, Expression)>),
+
+    // Struct instantiation: TypeName { field: val }
+    StructInst {
+        name: String,
+        fields: Vec<(String, Expression)>,
+    },
+
+    // Error propagation: expr?
+    ErrorPropagate(Box<Expression>),
+
+    // Type cast: expr as Type
+    CastExpr {
+        value: Box<Expression>,
+        target_type: TypeExpr,
+        default: Option<Box<Expression>>,  // expr as int or 0
+    },
+
+    // env("KEY") — read environment variable
+    EnvExpr(String),
+
+    // Range expression: start..end
+    RangeExpr {
+        start: Box<Expression>,
+        end: Box<Expression>,
+    },
+}
+
+// ── When Arms ─────────────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub struct WhenArm {
+    pub pattern: WhenPattern,
+    pub body: Box<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum WhenPattern {
+    Literal(Literal),
+    Range(Literal, Literal),
+    Wildcard,                // else
+    Identifier(String),
+}
+
+// ── Literals ──────────────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub enum Literal {
+    Int(i64),
+    Float(f64),
+    Str(String),
+    Bool(bool),
+    Nil,
+}
+
+// ── Binary Operators ──────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub enum BinaryOp {
+    // Arithmetic
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+
+    // Comparison
+    Eq,
+    NotEq,
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
+
+    // Logical
+    And,
+    Or,
+
+    // Special
+    Coalesce,   // ??
+    Is,         // identity / type check
+}
+
+// ── Unary Operators ───────────────────────────────────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub enum UnaryOp {
+    Not,    // not / !
+    Neg,    // -
+}
+
+// ── Pattern (used in when arms for destructuring) ─────────────────────────────
+#[derive(Debug, PartialEq, Clone)]
+pub enum Pattern {
+    Literal(Literal),
+    Wildcard,
+    Tuple(Vec<Pattern>),
+    Identifier(String),
 }

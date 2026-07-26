@@ -1,0 +1,44 @@
+use std.std_internal {
+    map_internal,
+    filter_internal,
+    find_internal,
+    push_internal,
+    concat_internal,
+    slice_internal,
+    includes_internal
+}
+
+/// Map elements of a list using a callback.
+pub fn map(list: List<Any>, cb: Function) -> List<Any> {
+    ret map_internal(list, cb)
+}
+
+/// Filter elements of a list using a callback predicate.
+pub fn filter(list: List<Any>, cb: Function) -> List<Any> {
+    ret filter_internal(list, cb)
+}
+
+/// Find the first element matching a callback predicate.
+pub fn find(list: List<Any>, cb: Function) -> Any? {
+    ret find_internal(list, cb)
+}
+
+/// Append an item to a list, returning a new list.
+pub fn push(list: List<Any>, item: Any) -> List<Any> {
+    ret push_internal(list, item)
+}
+
+/// Concatenate two lists together.
+pub fn concat(a: List<Any>, b: List<Any>) -> List<Any> {
+    ret concat_internal(a, b)
+}
+
+/// Extract a slice of a list.
+pub fn slice(list: List<Any>, start: Int, end: Int) -> List<Any> {
+    ret slice_internal(list, start, end)
+}
+
+/// Check if a list includes a value.
+pub fn includes(list: List<Any>, val: Any) -> Bool {
+    ret includes_internal(list, val)
+}

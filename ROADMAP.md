@@ -46,15 +46,83 @@
 
 ---
 
-## Phase 4: Advanced Features (Future)
-- [ ] Error handling & Result types
-- [ ] Trait system & generic constraints
-- [ ] Async/await syntax (currently implicit)
-- [ ] Module re-exports & visibility modifiers
-- [ ] Dependency injection / IoC patterns
-- [ ] Testing framework integration
-- [ ] Performance profiling & optimization
-- [ ] WASM target support
+## Phase 4: Developer Experience ✓ (v0.4.0)
+### LSP Server
+- [x] `calesteria lsp` starts Language Server Protocol server
+- [x] Syntax error diagnostics (real-time, as you type)
+- [x] Type error diagnostics
+- [x] Go-to-definition
+- [x] Hover: show type information
+- [x] Autocomplete: struct fields, function parameters, keywords
+
+### Formatter
+- [x] `calesteria fmt` formats `.caria` files
+- [x] Consistent style: indentation, spacing, line breaks
+- [x] Format-on-save integration via LSP
+
+### MCP Server
+- [x] `calesteria mcp` starts MCP server
+- [x] Tool: `validate_syntax(code)` → errors or "valid"
+- [x] Tool: `get_spec()` → compact language reference
+- [x] Tool: `compile_check(file)` → full diagnostics
+- [x] Tool: `explain_error(code, error)` → fix suggestion
+- [x] Tool: `scaffold(type, name)` → generate file/project
+
+### Error Message Quality
+- [x] Colored terminal output with code snippets
+- [x] "Did you mean...?" suggestions for typos
+- [x] Type mismatch shows expected vs actual with explanation
+- [x] Machine-readable JSON error output (`--format json`)
+
+### REPL
+- [x] `calesteria repl` — interactive evaluation
+- [x] Expression evaluation with type display
+- [x] Multi-line input support
+- [x] Command history
+
+### Watch Mode
+- [x] `calesteria dev` — file watcher with auto-recompile
+- [x] Hot-reload for web server (restart on change)
+- [x] Clear error display on recompile
+---
+
+## Phase 5: Ecosystem ✓ (v0.5.0)
+### Standard Library
+ - ✓ core: parseFloat, parseInt, str
+ - ✓ math: abs, min, max, round, random
+ - ✓ io: readText, writeText, exists
+ - ✓ net: fetch
+ - ✓ json: stringify, parse
+ - ✓ time: now, sleep
+ - ✓ crypto: uuid, sha256
+ - ✓ env: getVar
+ - ✓ path: join
+
+### Package System
+ - ✓ `calesteria add <package>` installs npm package
+ - ✓ `calesteria remove <package>` uninstalls npm package
+
+### Testing Framework
+ - ✓ `test "name" { ... }` blocks
+ - ✓ Assertions: `assert`, `assertEq`, `assertErr`
+ - ✓ `calesteria test <file>` test runner with status reporting
+
+### Documentation
+ - ✓ Doc comments `/// ...` parsing
+ - ✓ `calesteria doc <file>` HTML generator
+
+### LLM Spec & Onboarding Kit
+ - ✓ `calesteria spec` outputs LLM language specifications
+ - ✓ Auto-generated `.calesteria/llm-spec.md`
+ - ✓ AI system prompt templates
+
+---
+
+## Phase 6A: CLI & Scripting Target ✓
+ - ✓ Pipe operator (`|>`) for left-to-right transform chaining
+ - ✓ Process spawning and JS/Node command execution support
+ - ✓ Shebang support (`#!/usr/bin/env calesteria`) in CLI
+ - ✓ Public exports (`pub` for fn, struct, enum) compiled into ES modules
 
 ---
 

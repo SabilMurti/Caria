@@ -1,0 +1,9 @@
+use std.std_internal { uuid_internal, sha256_internal }
+
+pub fn uuid() -> Str {
+    ret uuid_internal()
+}
+
+pub fn sha256(data: Str) -> Str {
+    ret sha256_internal(data)
+}

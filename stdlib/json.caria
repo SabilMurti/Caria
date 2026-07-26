@@ -1,0 +1,9 @@
+use std.std_internal { stringify_internal, parse_internal }
+
+pub fn stringify(val: Any) -> Str {
+    ret stringify_internal(val)
+}
+
+pub fn parse(s: Str) -> Any {
+    ret parse_internal(s)
+}

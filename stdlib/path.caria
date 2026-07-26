@@ -1,0 +1,5 @@
+use std.std_internal { join_internal }
+
+pub fn join(a: Str, b: Str) -> Str {
+    ret join_internal(a, b)
+}
