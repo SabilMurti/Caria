@@ -239,6 +239,14 @@ impl CariaCompiler {
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
 
+        let mut sig_time = module.make_signature();
+        sig_time.returns.push(AbiParam::new(types::I64));
+        let id_time = module
+            .declare_function("caria_time_now_ms", Linkage::Import, &sig_time)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("time_now_ms".to_string(), (id_time, sig_time.clone()));
+        runtime_helpers.insert("time_ms".to_string(), (id_time, sig_time));
+
         let mut sig_reg = module.make_signature();
         sig_reg.params.push(AbiParam::new(types::I64));
         sig_reg.params.push(AbiParam::new(types::I64));
@@ -533,23 +541,29 @@ impl<'a> FunctionEmitter<'a> {
         match stmt {
             Statement::ConstDecl(decl) => {
                 let val = self.compile_expr(&decl.value)?;
-                let var = Variable::from_u32(*self.next_var_index as u32);
-                *self.next_var_index += 1;
-                
-                let val_type = self.builder.func.dfg.value_type(val);
-                self.builder.declare_var(var, val_type);
-                self.builder.def_var(var, val);
-                self.variables.insert(decl.name.clone(), var);
+                if let Some(&var) = self.variables.get(&decl.name) {
+                    self.builder.def_var(var, val);
+                } else {
+                    let var = Variable::from_u32(*self.next_var_index as u32);
+                    *self.next_var_index += 1;
+                    let val_type = self.builder.func.dfg.value_type(val);
+                    self.builder.declare_var(var, val_type);
+                    self.builder.def_var(var, val);
+                    self.variables.insert(decl.name.clone(), var);
+                }
             }
             Statement::MutDecl(decl) => {
                 let val = self.compile_expr(&decl.value)?;
-                let var = Variable::from_u32(*self.next_var_index as u32);
-                *self.next_var_index += 1;
-                
-                let val_type = self.builder.func.dfg.value_type(val);
-                self.builder.declare_var(var, val_type);
-                self.builder.def_var(var, val);
-                self.variables.insert(decl.name.clone(), var);
+                if let Some(&var) = self.variables.get(&decl.name) {
+                    self.builder.def_var(var, val);
+                } else {
+                    let var = Variable::from_u32(*self.next_var_index as u32);
+                    *self.next_var_index += 1;
+                    let val_type = self.builder.func.dfg.value_type(val);
+                    self.builder.declare_var(var, val_type);
+                    self.builder.def_var(var, val);
+                    self.variables.insert(decl.name.clone(), var);
+                }
             }
             Statement::AssignStmt(assign) => {
                 let val = self.compile_expr(&assign.value)?;
@@ -565,14 +579,14 @@ impl<'a> FunctionEmitter<'a> {
                 *returned = true;
             }
             Statement::SayStmt(expr) => {
-                let val = self.compile_expr(expr)?;
-                let val_type = self.builder.func.dfg.value_type(val);
-
-                if val_type == types::I64 {
-                    let helper_id = self.runtime_helpers.get("caria_say_int").unwrap().0;
+                if let Expression::Literal(Literal::Str(s)) = expr {
+                    let ptr = self.compile_expr(expr)?;
+                    let len_val = self.builder.ins().iconst(types::I64, s.len() as i64);
+                    let helper_id = self.runtime_helpers.get("caria_say_txt").unwrap().0;
                     let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
-                    self.builder.ins().call(local_ref, &[val]);
+                    self.builder.ins().call(local_ref, &[ptr, len_val]);
                 } else {
+                    let val = self.compile_expr(expr)?;
                     let helper_id = self.runtime_helpers.get("caria_say_int").unwrap().0;
                     let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
                     self.builder.ins().call(local_ref, &[val]);
@@ -615,6 +629,32 @@ impl<'a> FunctionEmitter<'a> {
                 if then_returned && else_returned {
                     *returned = true;
                 }
+            }
+            Statement::WhileStmt(w) => {
+                let header_block = self.builder.create_block();
+                let body_block = self.builder.create_block();
+                let exit_block = self.builder.create_block();
+
+                self.builder.ins().jump(header_block, &[]);
+
+                self.builder.switch_to_block(header_block);
+                let cond_val = self.compile_expr(&w.condition)?;
+                self.builder.ins().brif(cond_val, body_block, &[], exit_block, &[]);
+
+                self.builder.switch_to_block(body_block);
+                self.builder.seal_block(body_block);
+                let mut body_returned = false;
+                for s in &w.body {
+                    self.compile_statement(s, &mut body_returned)?;
+                }
+                if !body_returned {
+                    self.builder.ins().jump(header_block, &[]);
+                }
+
+                self.builder.seal_block(header_block);
+
+                self.builder.switch_to_block(exit_block);
+                self.builder.seal_block(exit_block);
             }
             Statement::ExprStmt(expr) => {
                 let _ = self.compile_expr(expr)?;

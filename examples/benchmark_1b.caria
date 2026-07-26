@@ -1,0 +1,33 @@
+rune benchmark_billion() -> int {
+    say("⚡ Starting Calesteria 1 Billion Iterations Benchmark...")
+    start_time := time_now_ms()
+    
+    count := 0
+    i := 0
+    while i < 1000 {
+        j := 0
+        while j < 1000 {
+            k := 0
+            while k < 1000 {
+                count = count + 1
+                k = k + 1
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    
+    end_time := time_now_ms()
+    elapsed := end_time - start_time
+    
+    say("Total Iterations Completed:")
+    say(count)
+    say("Execution Time (ms):")
+    say(elapsed)
+    ret count
+}
+
+rune main() -> int {
+    res := benchmark_billion()
+    ret 0
+}

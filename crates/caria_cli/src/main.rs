@@ -165,14 +165,21 @@ fn cmd_build_native(file_path: &str, format_json: bool) {
 
     // Write runtime helper C source on the fly
     let runtime_c = r#"
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <arpa/inet.h>
 
 void caria_say_int(long long val) {
     printf("%lld\n", val);
+}
+long long caria_time_now_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000 + (long long)ts.tv_nsec / 1000000;
 }
 void caria_say_txt(const char* ptr, long long len) {
     if (!ptr || len <= 0) {
