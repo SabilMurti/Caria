@@ -135,8 +135,28 @@ pub enum Token {
 
     // String literal (double-quoted, supports escape sequences)
     #[regex(r#""(?:[^"\\]|\\.)*""#, |lex| {
-        let s = lex.slice();
-        Some(s[1..s.len()-1].to_string())
+        let s = &lex.slice()[1..lex.slice().len()-1];
+        let mut unescaped = String::with_capacity(s.len());
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('n') => unescaped.push('\n'),
+                    Some('r') => unescaped.push('\r'),
+                    Some('t') => unescaped.push('\t'),
+                    Some('"') => unescaped.push('"'),
+                    Some('\\') => unescaped.push('\\'),
+                    Some(other) => {
+                        unescaped.push('\\');
+                        unescaped.push(other);
+                    }
+                    None => unescaped.push('\\'),
+                }
+            } else {
+                unescaped.push(c);
+            }
+        }
+        Some(unescaped)
     })]
     Str(String),
 

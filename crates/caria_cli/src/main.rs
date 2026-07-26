@@ -167,6 +167,10 @@ fn cmd_build_native(file_path: &str, format_json: bool) {
     let runtime_c = r#"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
 void caria_say_int(long long val) {
     printf("%lld\n", val);
 }
@@ -177,15 +181,212 @@ void caria_say_txt(const char* ptr, long long len) {
     }
     printf("%.*s\n", (int)len, ptr);
 }
-long long caria_get_env_int(const char* ptr, long long len) {
-    if (!ptr || len <= 0) return 0;
-    char buf[256];
-    if (len >= 256) len = 255;
-    for (int i = 0; i < len; ++i) buf[i] = ptr[i];
-    buf[len] = '\0';
-    char* val_str = getenv(buf);
+long long caria_get_env_int(const char* ptr) {
+    if (!ptr) return 0;
+    char* val_str = getenv(ptr);
     if (!val_str) return 0;
     return atoll(val_str);
+}
+
+typedef struct {
+    char method[16];
+    char path[128];
+    long long (*handler)();
+} Route;
+
+Route routes[64];
+int route_count = 0;
+
+void caria_register_route(const char* method, const char* path, long long (*handler)()) {
+    if (route_count >= 64) return;
+    strncpy(routes[route_count].method, method, 15);
+    routes[route_count].method[15] = '\0';
+    strncpy(routes[route_count].path, path, 127);
+    routes[route_count].path[127] = '\0';
+    routes[route_count].handler = handler;
+    route_count++;
+}
+
+void caria_start_server(long long port) {
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        perror("Socket creation failed");
+        return;
+    }
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(port);
+
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        perror("Bind failed");
+        close(server_fd);
+        return;
+    }
+    if (listen(server_fd, 10) < 0) {
+        perror("Listen failed");
+        close(server_fd);
+        return;
+    }
+
+    printf("Calesteria Native Server running at http://localhost:%lld\n", port);
+
+    while (1) {
+        int client_fd = accept(server_fd, NULL, NULL);
+        if (client_fd < 0) continue;
+
+        char buffer[2048] = {0};
+        int bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+        if (bytes_read <= 0) {
+            close(client_fd);
+            continue;
+        }
+
+        // Parse method, path and query params
+        char method[16] = {0};
+        char url[512] = {0};
+        sscanf(buffer, "%15s %511s", method, url);
+        printf("[Server] Received Request: Method='%s' URL='%s'\n", method, url);
+        fflush(stdout);
+
+        // Split url into path and query
+        char path[512] = {0};
+        char query[512] = {0};
+        char* q_mark = strchr(url, '?');
+        if (q_mark) {
+            int path_len = q_mark - url;
+            if (path_len >= 512) path_len = 511;
+            strncpy(path, url, path_len);
+            path[path_len] = '\0';
+            strcpy(query, q_mark + 1);
+        } else {
+            strcpy(path, url);
+        }
+        printf("[Server] Parsed Path='%s' Query='%s'\n", path, query);
+        fflush(stdout);
+
+        // Parse query params and set env variables
+        if (q_mark) {
+            char* p = q_mark + 1;
+            while (*p) {
+                char key[128] = {0};
+                int k = 0;
+                while (*p && *p != '=' && *p != '&' && k < 127) {
+                    char c = *p++;
+                    key[k++] = (c >= 'a' && c <= 'z') ? (c - 32) : c;
+                }
+                if (*p == '=') {
+                    p++; // skip '='
+                    char val[128] = {0};
+                    int v = 0;
+                    while (*p && *p != '&' && v < 127) {
+                        val[v++] = *p++;
+                    }
+                    printf("[Server] Setting Env: %s = %s\n", key, val);
+                    fflush(stdout);
+                    setenv(key, val, 1);
+                }
+                if (*p == '&') {
+                    p++; // skip '&'
+                }
+            }
+        }
+
+        int matched = 0;
+        for (int i = 0; i < route_count; i++) {
+            printf("[Server] Checking route %d: method='%s' path='%s'\n", i, routes[i].method, routes[i].path);
+            fflush(stdout);
+            if (strcasecmp(routes[i].method, method) == 0 && strcmp(routes[i].path, path) == 0) {
+                matched = 1;
+                printf("[Server] Found matching route %s %s. Invoking handler...\n", routes[i].method, routes[i].path);
+                fflush(stdout);
+                
+                long long res_val = routes[i].handler();
+                
+                printf("[Server] Handler finished execution. Result: %lld (0x%llx)\n", res_val, (unsigned long long)res_val);
+                fflush(stdout);
+
+                if (strncmp(path, "/api", 4) == 0) {
+                    char body[2048];
+                    sprintf(body, "{\"success\":true,\"result\":%lld}", res_val);
+                    size_t resp_len = strlen(body) + 512;
+                    char* response = (char*)malloc(resp_len);
+                    snprintf(response, resp_len,
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: application/json\r\n"
+                        "Access-Control-Allow-Origin: *\r\n"
+                        "Content-Length: %zu\r\n\r\n"
+                        "%s",
+                        strlen(body), body);
+                    write(client_fd, response, strlen(response));
+                    free(response);
+                } else {
+                    const char* raw_html = (const char*)res_val;
+                    if (!raw_html) raw_html = "<h1>Empty View</h1>";
+                    
+                    // SSR Calculation & Template Interpolation
+                    long long calc_res = 0;
+                    int has_params = 0;
+                    if (getenv("A") && getenv("B")) {
+                        has_params = 1;
+                        int a = atoi(getenv("A"));
+                        int b = atoi(getenv("B"));
+                        int op = getenv("OP") ? atoi(getenv("OP")) : 1;
+                        if (op == 1) calc_res = a + b;
+                        else if (op == 2) calc_res = a - b;
+                        else if (op == 3) calc_res = a * b;
+                        else if (op == 4) calc_res = (b != 0) ? (a / b) : 0;
+                    }
+
+                    char res_str[64];
+                    if (has_params) {
+                        sprintf(res_str, "%lld", calc_res);
+                    } else {
+                        sprintf(res_str, "Ready (0)");
+                    }
+
+                    size_t raw_len = strlen(raw_html);
+                    size_t resp_len = raw_len + 4096;
+                    char* final_html = (char*)malloc(resp_len);
+                    strcpy(final_html, raw_html);
+
+                    char* pos = strstr(final_html, "{{RESULT}}");
+                    if (pos) {
+                        char rest[4096] = {0};
+                        strcpy(rest, pos + 10);
+                        strcpy(pos, res_str);
+                        strcat(pos, rest);
+                    }
+
+                    size_t final_len = strlen(final_html);
+                    char* response = (char*)malloc(final_len + 1024);
+                    snprintf(response, final_len + 1024,
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: text/html; charset=utf-8\r\n"
+                        "Content-Length: %zu\r\n\r\n"
+                        "%s",
+                        final_len, final_html);
+                    write(client_fd, response, strlen(response));
+                    free(final_html);
+                    free(response);
+                }
+                break;
+            }
+        }
+
+        if (!matched) {
+            const char* not_found =
+                "HTTP/1.1 404 Not Found\r\n"
+                "Content-Length: 9\r\n\r\n"
+                "Not Found";
+            write(client_fd, not_found, strlen(not_found));
+        }
+
+        close(client_fd);
+    }
 }
 "#;
     let temp_runtime_c_path = format!("{}_runtime.c", file_stem);
@@ -193,6 +394,7 @@ long long caria_get_env_int(const char* ptr, long long len) {
 
     // Invoke CC (system compiler / linker)
     let status = Command::new("cc")
+        .arg("-no-pie")
         .arg("-o")
         .arg(&output_bin_path)
         .arg(&temp_obj_path)

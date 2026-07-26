@@ -8,13 +8,6 @@ rune calculate(op: int, a: int, b: int) -> int {
     }
 }
 
-get "/api/calculate" {
-    op = get_env_int("OP")
-    a = get_env_int("A")
-    b = get_env_int("B")
-    ret calculate(op, a, b)
-}
-
 get "/" {
     ret "<!DOCTYPE html>
 <html lang='en'>
@@ -32,146 +25,51 @@ get "/" {
     </style>
 </head>
 <body class='flex flex-col items-center justify-center min-h-screen text-gray-100 px-4 overflow-hidden'>
-    <div class='relative w-full max-w-sm bg-gray-900/80 backdrop-blur-xl border border-gray-800 rounded-3xl p-6 shadow-2xl shadow-indigo-950/50'>
+    <div class='relative w-full max-w-md bg-gray-900/80 backdrop-blur-xl border border-gray-800 rounded-3xl p-8 shadow-2xl shadow-indigo-950/50'>
         <div class='absolute -top-10 -left-10 w-40 h-40 bg-indigo-600/20 rounded-full blur-3xl -z-10'></div>
         <div class='absolute -bottom-10 -right-10 w-40 h-40 bg-purple-600/20 rounded-full blur-3xl -z-10'></div>
 
         <div class='flex items-center justify-between mb-6'>
-            <span class='text-xs uppercase tracking-widest text-indigo-400 font-semibold'>Calesteria V2 Pure</span>
-            <div class='flex space-x-1.5'>
-                <span class='w-2.5 h-2.5 rounded-full bg-red-500/80'></span>
-                <span class='w-2.5 h-2.5 rounded-full bg-yellow-500/80'></span>
-                <span class='w-2.5 h-2.5 rounded-full bg-green-500/80'></span>
+            <span class='text-xs uppercase tracking-widest text-indigo-400 font-semibold'>Calesteria Native SSR</span>
+            <span class='text-xs text-green-400 bg-green-950/60 border border-green-800 px-2.5 py-1 rounded-full font-mono'>100% Zero JS</span>
+        </div>
+
+        <div class='bg-gray-950/80 border border-gray-800/80 rounded-2xl p-6 mb-6 text-center relative overflow-hidden'>
+            <div class='text-xs uppercase text-gray-500 tracking-wider mb-1'>Hasil Perhitungan Native</div>
+            <div class='text-4xl font-light tracking-tight text-indigo-400 truncate'>{{RESULT}}</div>
+        </div>
+
+        <form method='GET' action='/' class='space-y-4'>
+            <div>
+                <label class='block text-xs text-gray-400 uppercase tracking-wider mb-1'>Angka Pertama (A)</label>
+                <input type='number' name='a' value='10' class='w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-indigo-500 transition-colors' required />
             </div>
-        </div>
 
-        <div class='bg-gray-950/80 border border-gray-800/80 rounded-2xl p-5 mb-6 text-right relative overflow-hidden'>
-            <div id='equation-display' class='text-sm text-gray-500 min-h-[1.25rem] tracking-wide mb-1 transition-all duration-300'></div>
-            <div id='result-display' class='text-4xl font-light tracking-tight text-white transition-all duration-300 truncate'>0</div>
-            <div id='status-indicator' class='absolute bottom-2 left-3 flex items-center space-x-1 text-[10px] text-gray-600 font-mono transition-opacity duration-300 opacity-0'>
-                <span class='w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse'></span>
-                <span>Caria Native API</span>
+            <div>
+                <label class='block text-xs text-gray-400 uppercase tracking-wider mb-1'>Operasi Matematika</label>
+                <select name='op' class='w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-indigo-500 transition-colors'>
+                    <option value='1'>+ (Penjumlahan)</option>
+                    <option value='2'>- (Pengurangan)</option>
+                    <option value='3'>* (Perkalian)</option>
+                    <option value='4'>/ (Pembagian)</option>
+                </select>
             </div>
-        </div>
 
-        <div class='grid grid-cols-4 gap-3.5'>
-            <button onclick='clearAll()' class='col-span-2 py-4 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-2xl text-gray-200 text-lg font-medium transition-all duration-150 active:scale-95'>AC</button>
-            <button onclick='deleteLast()' class='py-4 bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 hover:border-gray-600 rounded-2xl text-gray-200 text-lg font-medium transition-all duration-150 active:scale-95'>⌫</button>
-            <button onclick='setOperator(4, "/")' class='py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95'>÷</button>
+            <div>
+                <label class='block text-xs text-gray-400 uppercase tracking-wider mb-1'>Angka Kedua (B)</label>
+                <input type='number' name='b' value='20' class='w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white text-lg focus:outline-none focus:border-indigo-500 transition-colors' required />
+            </div>
 
-            <button onclick='appendNum(7)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>7</button>
-            <button onclick='appendNum(8)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>8</button>
-            <button onclick='appendNum(9)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>9</button>
-            <button onclick='setOperator(3, "*")' class='py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95'>×</button>
-
-            <button onclick='appendNum(4)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>4</button>
-            <button onclick='appendNum(5)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>5</button>
-            <button onclick='appendNum(6)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>6</button>
-            <button onclick='setOperator(2, "-")' class='py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95'>−</button>
-
-            <button onclick='appendNum(1)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>1</button>
-            <button onclick='appendNum(2)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>2</button>
-            <button onclick='appendNum(3)' class='py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>3</button>
-            <button onclick='setOperator(1, "+")' class='py-4 bg-indigo-600/80 hover:bg-indigo-600 rounded-2xl text-white text-xl font-semibold transition-all duration-150 active:scale-95'>+</button>
-
-            <button onclick='appendNum(0)' class='col-span-2 py-4 bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-2xl text-white text-xl transition-all duration-150 active:scale-95'>0</button>
-            <button onclick='calculate()' class='col-span-2 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-2xl text-white text-xl font-semibold shadow-lg shadow-indigo-500/20 transition-all duration-150 active:scale-95'>=</button>
-        </div>
+            <button type='submit' class='w-full mt-2 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white text-lg font-semibold shadow-lg shadow-indigo-500/20 transition-all duration-150 active:scale-95'>
+                Hitung via Calesteria OS Binary
+            </button>
+        </form>
     </div>
 
     <div class='mt-8 text-center text-xs text-gray-500 font-mono'>
-        <p>100% Calesteria Tech Stack — Pure Compiled Native Binary</p>
-        <p class='text-indigo-400 mt-1'>No Node.js, No JavaScript Runtimes, No Hono</p>
+        <p>100% Calesteria Native Compiled Web Binary</p>
+        <p class='text-indigo-400 mt-1'>Zero JavaScript Tags — Pure Server Side Execution</p>
     </div>
-
-    <script>
-        let currentInput = '';
-        let previousInput = '';
-        let opCode = null;
-        let opSymbol = '';
-
-        const resultDisplay = document.getElementById('result-display');
-        const equationDisplay = document.getElementById('equation-display');
-        const statusIndicator = document.getElementById('status-indicator');
-
-        function appendNum(num) {
-            if (currentInput === '0') {
-                currentInput = num.toString();
-            } else {
-                currentInput += num.toString();
-            }
-            updateDisplay();
-        }
-
-        function setOperator(code, symbol) {
-            if (currentInput === '' && previousInput !== '') {
-                opCode = code;
-                opSymbol = symbol;
-                updateDisplay();
-                return;
-            }
-            if (currentInput === '') return;
-            opCode = code;
-            opSymbol = symbol;
-            previousInput = currentInput;
-            currentInput = '';
-            updateDisplay();
-        }
-
-        function clearAll() {
-            currentInput = '';
-            previousInput = '';
-            opCode = null;
-            opSymbol = '';
-            updateDisplay();
-        }
-
-        function deleteLast() {
-            currentInput = currentInput.slice(0, -1);
-            updateDisplay();
-        }
-
-        function updateDisplay() {
-            resultDisplay.textContent = currentInput || previousInput || '0';
-            if (opCode && previousInput) {
-                equationDisplay.textContent = previousInput + ' ' + opSymbol + ' ' + currentInput;
-            } else {
-                equationDisplay.textContent = currentInput || '';
-            }
-        }
-
-        async function calculate() {
-            if (!opCode || !previousInput) return;
-            const secondVal = currentInput || previousInput;
-
-            const a = parseInt(previousInput);
-            const b = parseInt(secondVal);
-            
-            statusIndicator.classList.remove('opacity-0');
-
-            try {
-                const response = await fetch('/api/calculate?op=' + opCode + '&a=' + a + '&b=' + b);
-                const data = await response.json();
-
-                if (data.success) {
-                    resultDisplay.textContent = data.result;
-                    equationDisplay.textContent = previousInput + ' ' + opSymbol + ' ' + secondVal + ' =';
-                    currentInput = data.result.toString();
-                    previousInput = '';
-                    opCode = null;
-                    opSymbol = '';
-                } else {
-                    resultDisplay.textContent = 'Error';
-                }
-            } catch (err) {
-                resultDisplay.textContent = 'Offline';
-            } finally {
-                setTimeout(() => {
-                    statusIndicator.classList.add('opacity-0');
-                }, 1000);
-            }
-        }
-    </script>
 </body>
 </html>"
 }

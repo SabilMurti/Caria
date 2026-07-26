@@ -35,10 +35,15 @@ impl BackendModule {
         func_id: FuncId,
         ctx: &mut cranelift_codegen::Context,
     ) -> Result<(), String> {
-        match self {
-            BackendModule::JIT(m) => m.define_function(func_id, ctx).map_err(|e| e.to_string()),
-            BackendModule::Object(m) => m.define_function(func_id, ctx).map_err(|e| e.to_string()),
+        let res = match self {
+            BackendModule::JIT(m) => m.define_function(func_id, ctx),
+            BackendModule::Object(m) => m.define_function(func_id, ctx),
+        };
+        if let Err(ref e) = res {
+            eprintln!("Cranelift define_function failed for function {}: {}", func_id, e);
+            eprintln!("Function IR:\n{}", ctx.func);
         }
+        res.map_err(|e| e.to_string())
     }
 
     pub fn declare_data(
@@ -90,16 +95,24 @@ impl BackendModule {
     }
 }
 
+pub struct RouteRegistration {
+    method: String,
+    path: String,
+    func_id: FuncId,
+}
+
 pub struct CariaCompiler {
     module: Option<BackendModule>,
     fn_builder_ctx: FunctionBuilderContext,
     ctx: cranelift_codegen::Context,
-    // Map function names to their FuncId and signatures
+    // Map function/route names to their FuncId and signatures
     functions: HashMap<String, (FuncId, Signature)>,
     // String literal counter
     str_count: usize,
     // Native runtime helpers
     runtime_helpers: HashMap<String, (FuncId, Signature)>,
+    // Registered HTTP routes
+    routes: Vec<RouteRegistration>,
 }
 
 fn translate_type(type_expr: &TypeExpr) -> ir::Type {
@@ -128,6 +141,8 @@ impl CariaCompiler {
         jit_builder.symbol("caria_say_int", crate::runtime::caria_say_int as *const u8);
         jit_builder.symbol("caria_say_txt", crate::runtime::caria_say_txt as *const u8);
         jit_builder.symbol("caria_get_env_int", crate::runtime::caria_get_env_int as *const u8);
+        jit_builder.symbol("caria_register_route", crate::runtime::caria_register_route as *const u8);
+        jit_builder.symbol("caria_start_server", crate::runtime::caria_start_server as *const u8);
 
         let mut module = JITModule::new(jit_builder);
 
@@ -157,6 +172,22 @@ impl CariaCompiler {
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
 
+        let mut sig_reg = module.make_signature();
+        sig_reg.params.push(AbiParam::new(types::I64));
+        sig_reg.params.push(AbiParam::new(types::I64));
+        sig_reg.params.push(AbiParam::new(types::I64));
+        let id_reg = module
+            .declare_function("caria_register_route", Linkage::Import, &sig_reg)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_register_route".to_string(), (id_reg, sig_reg));
+
+        let mut sig_start = module.make_signature();
+        sig_start.params.push(AbiParam::new(types::I64));
+        let id_start = module
+            .declare_function("caria_start_server", Linkage::Import, &sig_start)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
+
         Ok(Self {
             module: Some(BackendModule::JIT(module)),
             fn_builder_ctx: FunctionBuilderContext::new(),
@@ -164,13 +195,14 @@ impl CariaCompiler {
             functions: HashMap::new(),
             str_count: 0,
             runtime_helpers,
+            routes: Vec::new(),
         })
     }
 
     pub fn new_object() -> Result<Self, String> {
         let isa_builder = isa::lookup(target_lexicon::Triple::host()).map_err(|e| e.to_string())?;
         let mut flags_builder = settings::builder();
-        flags_builder.set("is_pic", "true").unwrap();
+        flags_builder.set("is_pic", "false").unwrap();
         let flags = settings::Flags::new(flags_builder);
         let isa = isa_builder.finish(flags).map_err(|e| e.to_string())?;
         
@@ -207,6 +239,22 @@ impl CariaCompiler {
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("get_env_int".to_string(), (id_env, sig_env));
 
+        let mut sig_reg = module.make_signature();
+        sig_reg.params.push(AbiParam::new(types::I64));
+        sig_reg.params.push(AbiParam::new(types::I64));
+        sig_reg.params.push(AbiParam::new(types::I64));
+        let id_reg = module
+            .declare_function("caria_register_route", Linkage::Import, &sig_reg)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_register_route".to_string(), (id_reg, sig_reg));
+
+        let mut sig_start = module.make_signature();
+        sig_start.params.push(AbiParam::new(types::I64));
+        let id_start = module
+            .declare_function("caria_start_server", Linkage::Import, &sig_start)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
+
         Ok(Self {
             module: Some(BackendModule::Object(module)),
             fn_builder_ctx: FunctionBuilderContext::new(),
@@ -214,6 +262,7 @@ impl CariaCompiler {
             functions: HashMap::new(),
             str_count: 0,
             runtime_helpers,
+            routes: Vec::new(),
         })
     }
 
@@ -248,35 +297,76 @@ impl CariaCompiler {
     fn compile_all(&mut self, program: &Program) -> Result<(), String> {
         let mod_ref = self.module.as_mut().ok_or("Module not initialized")?;
 
-        // Phase 1: Declare all functions
+        // Phase 1: Declare all functions (runes & routes)
         for stmt in &program.statements {
-            if let Statement::RuneDecl(rune) = stmt {
-                let mut sig = mod_ref.make_signature();
-                for param in &rune.params {
-                    sig.params.push(AbiParam::new(translate_type(&param.type_expr)));
+            match stmt {
+                Statement::RuneDecl(rune) => {
+                    let mut sig = mod_ref.make_signature();
+                    for param in &rune.params {
+                        sig.params.push(AbiParam::new(translate_type(&param.type_expr)));
+                    }
+                    if let Some(ref ret) = rune.return_type {
+                        sig.returns.push(AbiParam::new(translate_type(ret)));
+                    } else if rune.name == "main" {
+                        sig.returns.push(AbiParam::new(types::I32));
+                    }
+                    let linkage = if rune.name == "main" {
+                        Linkage::Export
+                    } else {
+                        Linkage::Local
+                    };
+                    let func_id = mod_ref.declare_function(&rune.name, linkage, &sig)?;
+                    self.functions.insert(rune.name.clone(), (func_id, sig));
                 }
-                
-                if let Some(ref ret) = rune.return_type {
-                    sig.returns.push(AbiParam::new(translate_type(ret)));
-                } else if rune.name == "main" {
-                    sig.returns.push(AbiParam::new(types::I32));
+                Statement::RouteDecl(route) => {
+                    let method_str = match route.method {
+                        ast::HttpMethod::Get => "GET",
+                        ast::HttpMethod::Post => "POST",
+                        ast::HttpMethod::Put => "PUT",
+                        ast::HttpMethod::Patch => "PATCH",
+                        ast::HttpMethod::Delete => "DELETE",
+                    };
+                    let route_fn_name = format!(
+                        "__route_{}_{}",
+                        method_str.to_lowercase(),
+                        route.path.replace("/", "_").replace("-", "_").replace(".", "_")
+                    );
+                    let mut sig = mod_ref.make_signature();
+                    sig.returns.push(AbiParam::new(types::I64)); // returns string ptr (txt)
+                    let func_id = mod_ref.declare_function(&route_fn_name, Linkage::Local, &sig)?;
+                    self.functions.insert(route_fn_name.clone(), (func_id, sig));
+                    self.routes.push(RouteRegistration {
+                        method: method_str.to_string(),
+                        path: route.path.clone(),
+                        func_id,
+                    });
                 }
-
-                let linkage = if rune.name == "main" {
-                    Linkage::Export
-                } else {
-                    Linkage::Local
-                };
-
-                let func_id = mod_ref.declare_function(&rune.name, linkage, &sig)?;
-                self.functions.insert(rune.name.clone(), (func_id, sig));
+                _ => {}
             }
         }
 
         // Phase 2: Compile bodies
         for stmt in &program.statements {
-            if let Statement::RuneDecl(rune) = stmt {
-                self.compile_rune(rune)?;
+            match stmt {
+                Statement::RuneDecl(rune) => {
+                    self.compile_rune(rune)?;
+                }
+                Statement::RouteDecl(route) => {
+                    let method_str = match route.method {
+                        ast::HttpMethod::Get => "GET",
+                        ast::HttpMethod::Post => "POST",
+                        ast::HttpMethod::Put => "PUT",
+                        ast::HttpMethod::Patch => "PATCH",
+                        ast::HttpMethod::Delete => "DELETE",
+                    };
+                    let route_fn_name = format!(
+                        "__route_{}_{}",
+                        method_str.to_lowercase(),
+                        route.path.replace("/", "_").replace("-", "_").replace(".", "_")
+                    );
+                    self.compile_route(&route_fn_name, &route.body)?;
+                }
+                _ => {}
             }
         }
 
@@ -286,7 +376,6 @@ impl CariaCompiler {
     fn compile_rune(&mut self, rune: &RuneDecl) -> Result<(), String> {
         let &(func_id, ref sig) = self.functions.get(&rune.name).unwrap();
         self.ctx.func.signature = sig.clone();
-        
         self.ctx.func.name = ir::UserFuncName::user(0, func_id.as_u32());
 
         // Pre-extract parameter types to satisfy the borrow checker
@@ -318,15 +407,44 @@ impl CariaCompiler {
             runtime_helpers: &self.runtime_helpers,
             str_count: &mut self.str_count,
             string_literals: HashMap::new(),
+            routes: &self.routes,
         };
 
         match &rune.body {
             RuneBody::Block(stmts) => {
+                // If this is main, register routes and start server at the entry of the function!
+                if rune.name == "main" {
+                    if !helper.routes.is_empty() {
+                        for route in helper.routes {
+                            let method_gv = helper.get_or_create_string_literal(&route.method)?;
+                            let path_gv = helper.get_or_create_string_literal(&route.path)?;
+                            
+                            let method_local = helper.module.declare_data_in_func(method_gv, &mut helper.builder.func);
+                            let path_local = helper.module.declare_data_in_func(path_gv, &mut helper.builder.func);
+                            
+                            let method_ptr = helper.builder.ins().global_value(types::I64, method_local);
+                            let path_ptr = helper.builder.ins().global_value(types::I64, path_local);
+                            
+                            let local_func = helper.module.declare_func_in_func(route.func_id, &mut helper.builder.func);
+                            let func_ptr = helper.builder.ins().func_addr(types::I64, local_func);
+                            
+                            let register_id = helper.runtime_helpers.get("caria_register_route").unwrap().0;
+                            let local_ref = helper.module.declare_func_in_func(register_id, &mut helper.builder.func);
+                            helper.builder.ins().call(local_ref, &[method_ptr, path_ptr, func_ptr]);
+                        }
+                        
+                        let start_id = helper.runtime_helpers.get("caria_start_server").unwrap().0;
+                        let local_ref = helper.module.declare_func_in_func(start_id, &mut helper.builder.func);
+                        let port_val = helper.builder.ins().iconst(types::I64, 8080);
+                        helper.builder.ins().call(local_ref, &[port_val]);
+                    }
+                }
+
                 let mut returned = false;
                 for stmt in stmts {
                     helper.compile_statement(stmt, &mut returned)?;
                 }
-                
+
                 if rune.name == "main" && !returned {
                     let zero = helper.builder.ins().iconst(types::I32, 0);
                     helper.builder.ins().return_(&[zero]);
@@ -336,6 +454,51 @@ impl CariaCompiler {
                 let val = helper.compile_expr(expr)?;
                 helper.builder.ins().return_(&[val]);
             }
+        }
+
+        helper.builder.finalize();
+        let mod_ref = self.module.as_mut().ok_or("Module not initialized")?;
+        mod_ref.define_function(func_id, &mut self.ctx)?;
+        self.ctx.clear();
+
+        Ok(())
+    }
+
+    fn compile_route(&mut self, name: &str, body: &[Statement]) -> Result<(), String> {
+        let &(func_id, ref sig) = self.functions.get(name).unwrap();
+        self.ctx.func.signature = sig.clone();
+        self.ctx.func.name = ir::UserFuncName::user(0, func_id.as_u32());
+
+        let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.fn_builder_ctx);
+        let entry_block = builder.create_block();
+        builder.append_block_params_for_function_params(entry_block);
+        builder.switch_to_block(entry_block);
+        builder.seal_block(entry_block);
+
+        let mut variables = HashMap::new();
+        let mut next_var_index = 0;
+        
+        let mut helper = FunctionEmitter {
+            builder,
+            variables,
+            next_var_index: &mut next_var_index,
+            module: self.module.as_mut().ok_or("Module not initialized")?,
+            functions: &self.functions,
+            runtime_helpers: &self.runtime_helpers,
+            str_count: &mut self.str_count,
+            string_literals: HashMap::new(),
+            routes: &self.routes,
+        };
+
+        let mut returned = false;
+        for stmt in body {
+            helper.compile_statement(stmt, &mut returned)?;
+        }
+        
+        // Default return 0 if not returned
+        if !returned {
+            let zero = helper.builder.ins().iconst(types::I64, 0);
+            helper.builder.ins().return_(&[zero]);
         }
 
         helper.builder.finalize();
@@ -358,6 +521,7 @@ struct FunctionEmitter<'a> {
     runtime_helpers: &'a HashMap<String, (FuncId, Signature)>,
     str_count: &'a mut usize,
     string_literals: HashMap<String, DataId>,
+    routes: &'a [RouteRegistration],
 }
 
 impl<'a> FunctionEmitter<'a> {
@@ -573,12 +737,10 @@ impl<'a> FunctionEmitter<'a> {
                             self.builder.seal_block(match_block);
                             self.builder.seal_block(next_arm_block);
 
-                            // Compile match block
                             self.builder.switch_to_block(match_block);
                             let val = self.compile_expr(&arm.body)?;
                             self.builder.ins().jump(merge_block, &[val]);
 
-                            // Set compiler focus to next block for subsequent arm branches
                             self.builder.switch_to_block(next_arm_block);
                         }
                         ast::WhenPattern::Wildcard => {
@@ -626,7 +788,7 @@ impl<'a> FunctionEmitter<'a> {
         *self.str_count += 1;
 
         let data_id = self.module
-            .declare_data(&name, Linkage::Local, false, false)
+            .declare_data(&name, Linkage::Export, true, false)
             .map_err(|e| e.to_string())?;
 
         let mut desc = DataDescription::new();
