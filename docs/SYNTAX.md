@@ -177,18 +177,28 @@ model User {
 
 ---
 
-## 8. HTTP Routing
+## 8. HTTP Routing & SSR (Server-Side Rendering)
 
 HTTP routes are declared directly in the source file, mapping paths to handler bodies.
 
 ```caria
 get "/users" {
     // ... handling GET request ...
+    ret "<h1>Users List</h1>"
 }
 
 post "/users" with jwt_auth() {
     // ... handling POST request with decorator ...
 }
+```
+
+### Dynamic Asset Resolution (SSR Grid)
+Calesteria automatically detects assets managed by Vite dev server (`public/hot`) or compiled production files (`public/build/manifest.json`).
+If no assets are running, it falls back gracefully to standard Tailwind CSS styling inside the compiled native ELF binary:
+
+```html
+<link rel="stylesheet" href="/resources/css/app.css">
+<script type="module" src="/resources/js/app.js"></script>
 ```
 
 ---
@@ -216,5 +226,46 @@ Built-in resiliency mechanisms.
 ```caria
 retry 3 times with timeout(5) {
     call_payment_gateway()
+}
+```
+
+---
+
+## 10. CLI Plugins & JIT Subcommand Engine (`caria cast`)
+
+Caria supports compiling/JIT running local `cast.cria` or `cast` scripts to extend the command line interface without code bloat.
+
+### System Built-in Helpers
+The following native runtime helper functions are available inside any Caria/Calesteria script:
+
+| Function | Type Signature | Description |
+|---|---|---|
+| `args_count()` | `-> int` | Returns the number of subcommand arguments. |
+| `arg(idx: int)` | `(idx: int) -> txt` | Retrieves the argument string at `idx`. |
+| `write_file(path: txt, content: txt)` | `(path: txt, content: txt)` | Writes text content to `path` (auto-creates parent directories). |
+| `create_dir(path: txt)` | `(path: txt)` | Creates a directory (and all intermediate directories). |
+| `run_cmd(cmd: txt)` | `(cmd: txt) -> int` | Runs a system shell command and returns the exit status code. |
+
+### Implementing a Custom `cast` Command
+Create a `cast.cria` or `cast` script in the root directory. Subcommand calls (e.g. `caria cast serve` or `caria cast make:controller`) are mapped directly to corresponding runes (e.g. `serve()` or `make_controller()` with colon replaced with underscore):
+
+```caria
+// cast.cria
+
+rune serve() {
+    say("⚡ Starting Calesteria Dev Server...")
+    run_cmd("caria dev")
+}
+
+rune make_controller() {
+    guard args_count() > 0 else {
+        say("Usage: caria cast make:controller <Name>")
+        ret 1
+    }
+    name = arg(0)
+    path = "app/controllers/" + name + ".cria"
+    content = "// Controller: " + name + "\n\nrune index() -> txt {\n    ret \"Hello\"\n}\n"
+    write_file(path, content)
+    say("✅ Created Controller: " + path)
 }
 ```

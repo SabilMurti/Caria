@@ -147,6 +147,11 @@ impl CariaCompiler {
         jit_builder.symbol("caria_str_concat", crate::runtime::caria_str_concat as *const u8);
         jit_builder.symbol("caria_register_route", crate::runtime::caria_register_route as *const u8);
         jit_builder.symbol("caria_start_server", crate::runtime::caria_start_server as *const u8);
+        jit_builder.symbol("caria_arg_count", crate::runtime::caria_arg_count as *const u8);
+        jit_builder.symbol("caria_arg_get", crate::runtime::caria_arg_get as *const u8);
+        jit_builder.symbol("caria_write_file", crate::runtime::caria_write_file as *const u8);
+        jit_builder.symbol("caria_create_dir", crate::runtime::caria_create_dir as *const u8);
+        jit_builder.symbol("caria_run_cmd", crate::runtime::caria_run_cmd as *const u8);
 
         let mut module = JITModule::new(jit_builder);
 
@@ -217,6 +222,44 @@ impl CariaCompiler {
             .declare_function("caria_str_concat", Linkage::Import, &sig_concat)
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("caria_str_concat".to_string(), (id_concat, sig_concat));
+
+        let mut sig_args_cnt = module.make_signature();
+        sig_args_cnt.returns.push(AbiParam::new(types::I64));
+        let id_args_cnt = module
+            .declare_function("caria_arg_count", Linkage::Import, &sig_args_cnt)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("args_count".to_string(), (id_args_cnt, sig_args_cnt));
+
+        let mut sig_arg = module.make_signature();
+        sig_arg.params.push(AbiParam::new(types::I64));
+        sig_arg.returns.push(AbiParam::new(types::I64));
+        let id_arg = module
+            .declare_function("caria_arg_get", Linkage::Import, &sig_arg)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("arg".to_string(), (id_arg, sig_arg));
+
+        let mut sig_write = module.make_signature();
+        sig_write.params.push(AbiParam::new(types::I64));
+        sig_write.params.push(AbiParam::new(types::I64));
+        let id_write = module
+            .declare_function("caria_write_file", Linkage::Import, &sig_write)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("write_file".to_string(), (id_write, sig_write));
+
+        let mut sig_mkdir = module.make_signature();
+        sig_mkdir.params.push(AbiParam::new(types::I64));
+        let id_mkdir = module
+            .declare_function("caria_create_dir", Linkage::Import, &sig_mkdir)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("create_dir".to_string(), (id_mkdir, sig_mkdir));
+
+        let mut sig_run_cmd = module.make_signature();
+        sig_run_cmd.params.push(AbiParam::new(types::I64));
+        sig_run_cmd.returns.push(AbiParam::new(types::I64));
+        let id_run_cmd = module
+            .declare_function("caria_run_cmd", Linkage::Import, &sig_run_cmd)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("run_cmd".to_string(), (id_run_cmd, sig_run_cmd));
 
         Ok(Self {
             module: Some(BackendModule::JIT(module)),
@@ -311,6 +354,44 @@ impl CariaCompiler {
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("caria_str_concat".to_string(), (id_concat, sig_concat));
 
+        let mut sig_args_cnt = module.make_signature();
+        sig_args_cnt.returns.push(AbiParam::new(types::I64));
+        let id_args_cnt = module
+            .declare_function("caria_arg_count", Linkage::Import, &sig_args_cnt)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("args_count".to_string(), (id_args_cnt, sig_args_cnt));
+
+        let mut sig_arg = module.make_signature();
+        sig_arg.params.push(AbiParam::new(types::I64));
+        sig_arg.returns.push(AbiParam::new(types::I64));
+        let id_arg = module
+            .declare_function("caria_arg_get", Linkage::Import, &sig_arg)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("arg".to_string(), (id_arg, sig_arg));
+
+        let mut sig_write = module.make_signature();
+        sig_write.params.push(AbiParam::new(types::I64));
+        sig_write.params.push(AbiParam::new(types::I64));
+        let id_write = module
+            .declare_function("caria_write_file", Linkage::Import, &sig_write)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("write_file".to_string(), (id_write, sig_write));
+
+        let mut sig_mkdir = module.make_signature();
+        sig_mkdir.params.push(AbiParam::new(types::I64));
+        let id_mkdir = module
+            .declare_function("caria_create_dir", Linkage::Import, &sig_mkdir)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("create_dir".to_string(), (id_mkdir, sig_mkdir));
+
+        let mut sig_run_cmd = module.make_signature();
+        sig_run_cmd.params.push(AbiParam::new(types::I64));
+        sig_run_cmd.returns.push(AbiParam::new(types::I64));
+        let id_run_cmd = module
+            .declare_function("caria_run_cmd", Linkage::Import, &sig_run_cmd)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("run_cmd".to_string(), (id_run_cmd, sig_run_cmd));
+
         Ok(Self {
             module: Some(BackendModule::Object(module)),
             fn_builder_ctx: FunctionBuilderContext::new(),
@@ -323,15 +404,19 @@ impl CariaCompiler {
     }
 
     pub fn compile_to_jit(&mut self, program: &Program) -> Result<*const u8, String> {
+        self.compile_and_get_function(program, "main")
+    }
+
+    pub fn compile_and_get_function(&mut self, program: &Program, name: &str) -> Result<*const u8, String> {
         self.compile_all(program)?;
         
         if let Some(BackendModule::JIT(ref mut m)) = self.module {
             m.finalize_definitions().map_err(|e| e.to_string())?;
-            if let Some(&(func_id, _)) = self.functions.get("main") {
+            if let Some(&(func_id, _)) = self.functions.get(name) {
                 let code_ptr = m.get_finalized_function(func_id);
                 Ok(code_ptr)
             } else {
-                Err("No main function defined in Calesteria code".to_string())
+                Err(format!("No function named '{}' defined in the code", name))
             }
         } else {
             Err("JIT compiler module not initialized or already finished".to_string())
@@ -610,7 +695,7 @@ impl<'a> FunctionEmitter<'a> {
             }
             Expression::CallExpr { callee, .. } => {
                 if let Expression::Identifier(name) = &**callee {
-                    if name == "view" {
+                    if name == "view" || name == "arg" || name == "caria_arg_get" {
                         return "Str";
                     }
                 }
@@ -964,7 +1049,7 @@ impl<'a> FunctionEmitter<'a> {
         *self.str_count += 1;
 
         let data_id = self.module
-            .declare_data(&name, Linkage::Export, true, false)
+            .declare_data(&name, Linkage::Local, false, false)
             .map_err(|e| e.to_string())?;
 
         let mut desc = DataDescription::new();

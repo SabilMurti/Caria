@@ -148,6 +148,7 @@ dependencies = [
  "cranelift-object",
  "object",
  "once_cell",
+ "serde_json",
  "target-lexicon",
  "tiny_http",
 ]
