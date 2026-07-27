@@ -254,7 +254,6 @@ void caria_write_file(const char* path, const char* content) {
         fclose(f);
     }
 }
-
 long long caria_run_cmd(const char* cmd) {
     if (!cmd) return -1;
     int status = system(cmd);
@@ -265,6 +264,33 @@ long long caria_run_cmd(const char* cmd) {
     return status;
 }
 
+const char* caria_view(const char* view_name) {
+    if (!view_name) return "";
+    char path1[1024]; snprintf(path1, sizeof(path1), "views/%s.glyph", view_name);
+    char path2[1024]; snprintf(path2, sizeof(path2), "views/%s.cria", view_name);
+    char path3[1024]; snprintf(path3, sizeof(path3), "views/%s.html", view_name);
+    
+    const char* try_paths[3] = { path1, path2, path3 };
+    for (int i = 0; i < 3; i++) {
+        FILE* f = fopen(try_paths[i], "r");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            long sz = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            char* buf = (char*)malloc(sz + 1);
+            if (buf) {
+                size_t read_bytes = fread(buf, 1, sz, f);
+                buf[read_bytes] = '\0';
+                fclose(f);
+                return buf;
+            }
+            fclose(f);
+        }
+    }
+    char* err = (char*)malloc(512);
+    snprintf(err, 512, "<h1>View '%s' not found</h1>", view_name);
+    return err;
+}
 
 void caria_say_int(long long val) {
     printf("%lld\n", val);

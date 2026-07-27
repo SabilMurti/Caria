@@ -329,3 +329,32 @@ pub extern "C" fn caria_run_cmd(cmd_ptr: *const u8) -> i64 {
     }
     -3
 }
+
+#[no_mangle]
+pub extern "C" fn caria_view(view_name_ptr: *const u8) -> *const u8 {
+    if view_name_ptr.is_null() {
+        return std::ptr::null();
+    }
+    let c_str = unsafe { std::ffi::CStr::from_ptr(view_name_ptr as *const std::os::raw::c_char) };
+    let view_name = c_str.to_string_lossy().to_string();
+    
+    let possible_paths = [
+        format!("views/{}.glyph", view_name),
+        format!("views/{}.cria", view_name),
+        format!("views/{}.html", view_name),
+    ];
+    
+    let mut view_content = format!("<h1>View '{}' not found</h1>", view_name);
+    for p in &possible_paths {
+        if std::path::Path::new(p).exists() {
+            if let Ok(content) = std::fs::read_to_string(p) {
+                view_content = content;
+                break;
+            }
+        }
+    }
+    
+    let leaked = Box::leak(view_content.into_boxed_str());
+    leaked.as_ptr()
+}
+

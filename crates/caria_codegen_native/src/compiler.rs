@@ -261,6 +261,15 @@ impl CariaCompiler {
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("run_cmd".to_string(), (id_run_cmd, sig_run_cmd));
 
+        let mut sig_view = module.make_signature();
+        sig_view.params.push(AbiParam::new(types::I64));
+        sig_view.returns.push(AbiParam::new(types::I64));
+        let id_view = module
+            .declare_function("caria_view", Linkage::Import, &sig_view)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("view".to_string(), (id_view, sig_view));
+
+
         Ok(Self {
             module: Some(BackendModule::JIT(module)),
             fn_builder_ctx: FunctionBuilderContext::new(),
@@ -391,6 +400,15 @@ impl CariaCompiler {
             .declare_function("caria_run_cmd", Linkage::Import, &sig_run_cmd)
             .map_err(|e| e.to_string())?;
         runtime_helpers.insert("run_cmd".to_string(), (id_run_cmd, sig_run_cmd));
+
+        let mut sig_view = module.make_signature();
+        sig_view.params.push(AbiParam::new(types::I64));
+        sig_view.returns.push(AbiParam::new(types::I64));
+        let id_view = module
+            .declare_function("caria_view", Linkage::Import, &sig_view)
+            .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("view".to_string(), (id_view, sig_view));
+
 
         Ok(Self {
             module: Some(BackendModule::Object(module)),
@@ -914,25 +932,7 @@ impl<'a> FunctionEmitter<'a> {
             }
             Expression::CallExpr { callee, args } => {
                 if let Expression::Identifier(name) = &**callee {
-                    if name == "view" {
-                        if let Some(Expression::Literal(Literal::Str(view_name))) = args.first() {
-                            let possible_paths = [
-                                format!("views/{}.glyph", view_name),
-                                format!("views/{}.cria", view_name),
-                                format!("views/{}.html", view_name),
-                            ];
-                            let mut view_content = format!("<h1>View '{}' not found</h1>", view_name);
-                            for p in &possible_paths {
-                                if Path::new(p).exists() {
-                                    if let Ok(content) = fs::read_to_string(p) {
-                                        view_content = content;
-                                        break;
-                                    }
-                                }
-                            }
-                            return self.compile_expr(&Expression::Literal(Literal::Str(view_content)));
-                        }
-                    }
+
 
                     if let Some(&(func_id, ref sig)) = self.functions.get(name) {
                         let mut compiled_args = Vec::new();
