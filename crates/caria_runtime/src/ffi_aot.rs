@@ -319,3 +319,84 @@ pub extern "C" fn caria_write_file(path_ptr: *const c_char, content_ptr: *const 
     }
     let _ = std::fs::write(path, content);
 }
+
+// -----------------------------------------------------------------------------
+// NATIVE MODULE: HTTP SERVER (Axum + Tokio)
+// -----------------------------------------------------------------------------
+use axum::{
+    routing::{get, post, put, delete},
+    Router, extract::Request, response::IntoResponse,
+};
+use std::sync::RwLock;
+use std::net::SocketAddr;
+
+lazy_static! {
+    // Maps "(Method, Path)" -> Function Pointer (i64)
+    static ref ROUTES: RwLock<HashMap<String, i64>> = RwLock::new(HashMap::new());
+}
+
+#[no_mangle]
+pub extern "C" fn caria_register_route(method_ptr: *const c_char, path_ptr: *const c_char, handler_ptr: i64) {
+    if method_ptr.is_null() || path_ptr.is_null() || handler_ptr == 0 { return; }
+    let method = unsafe { CStr::from_ptr(method_ptr) }.to_str().unwrap_or("").to_uppercase();
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    
+    let key = format!("{}|{}", method, path);
+    let mut routes = ROUTES.write().unwrap();
+    routes.insert(key, handler_ptr);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_start_server(port: i64) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut app = Router::new();
+        
+        let routes = {
+            let r = ROUTES.read().unwrap();
+            r.clone()
+        };
+        
+        for (key, handler_ptr) in routes {
+            let parts: Vec<&str> = key.split('|').collect();
+            if parts.len() != 2 { continue; }
+            let method = parts[0];
+            let path = parts[1];
+            
+            let handler_func = move |req: Request| async move {
+                // Here we would build a CariaObject Context.
+                // For MVP, we just pass an empty Context (class_hash = 0)
+                let ctx_ptr = caria_obj_alloc(0);
+                
+                // Call the Cranelift AOT compiled function pointer
+                let func: extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(handler_ptr as *const ()) };
+                let res_ptr = func(ctx_ptr);
+                
+                // Read the result. For MVP, we assume it's a C-string pointer if it's not a CariaObject
+                // Actually, let's treat it as a String pointer for now (like how caria_say_txt works)
+                if res_ptr != 0 {
+                    let c_str = unsafe { CStr::from_ptr(res_ptr as *const c_char) };
+                    if let Ok(s) = c_str.to_str() {
+                        return s.to_string();
+                    }
+                }
+                
+                "{}".to_string()
+            };
+            
+            app = match method {
+                "GET" => app.route(path, get(handler_func)),
+                "POST" => app.route(path, post(handler_func)),
+                "PUT" => app.route(path, put(handler_func)),
+                "DELETE" => app.route(path, delete(handler_func)),
+                _ => app.route(path, get(handler_func)),
+            };
+        }
+        
+        let addr = SocketAddr::from(([0, 0, 0, 0], port as u16));
+        println!("🚀 Calesteria Native Server listening on {}", addr);
+        
+        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
+}
