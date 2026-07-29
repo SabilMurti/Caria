@@ -1,0 +1,7 @@
+[package]
+name = "caria_ir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+caria_parser = { path = "../caria_parser" }

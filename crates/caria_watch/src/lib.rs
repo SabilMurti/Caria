@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub fn start_watcher(file_path: &str) -> Result<()> {
-    println!("Watching '{}' for changes...", file_path);
+    println!("Watching current directory for changes... (Entry: '{}')", file_path);
 
     let path_to_watch = Path::new(file_path);
     let path_to_watch_cloned = path_to_watch.to_path_buf();
@@ -63,7 +63,7 @@ pub fn start_watcher(file_path: &str) -> Result<()> {
         }
     })?;
 
-    watcher.watch(path_to_watch, RecursiveMode::NonRecursive)?;
+    watcher.watch(Path::new("."), RecursiveMode::Recursive)?;
 
     // Keep watcher alive
     loop {

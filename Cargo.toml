@@ -12,4 +12,4 @@ members = [
     "crates/caria_watch",
     "crates/caria_codegen_wasm",
     "crates/caria_codegen_native"
-]
+, "crates/caria_semantic", "crates/caria_ir", "crates/caria_memory", "crates/caria_runtime"]

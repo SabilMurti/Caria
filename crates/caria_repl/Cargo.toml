@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 caria_lexer = { path = "../caria_lexer" }
 caria_parser = { path = "../caria_parser" }
+caria_semantic = { path = "../caria_semantic" }
+caria_ir = { path = "../caria_ir" }
+caria_memory = { path = "../caria_memory" }
 caria_codegen_native = { path = "../caria_codegen_native" }
-caria_diagnostic = { path = "../caria_diagnostic" }
 tokio = { version = "1.0", features = ["full"] }

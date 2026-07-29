@@ -1,11 +1,13 @@
 use std::io::{self, Write};
 use caria_lexer::CariaLexer;
 use caria_parser::Parser;
-use caria_diagnostic::typecheck::TypeChecker;
-use caria_codegen_native::NativeCompiler;
+use caria_codegen_native;
+use caria_semantic;
+use caria_ir;
+use caria_memory;
 
 pub fn start_repl() {
-    println!("Calesteria REPL v0.2.0 (V2 Syntax — Cranelift Native JIT)");
+    println!("Calesteria REPL v0.4.0 (V2 Syntax — Cranelift Native JIT Phase A.2)");
     println!("Type 'exit' to quit. Functions defined with 'rune' persist.");
 
     let mut input = String::new();
@@ -46,14 +48,13 @@ pub fn start_repl() {
             let mut parser = Parser::new(lexer);
             match parser.parse_program() {
                 Ok(prog) => {
-                    let mut checker = TypeChecker::new();
-                    match checker.check_program(&prog) {
+                    match caria_semantic::analyze(&prog) {
                         Ok(_) => {
                             session_declarations.push_str(&current_cmd);
                             session_declarations.push('\n');
                             println!("[Declared]");
                         }
-                        Err(e) => println!("Type Error: {}", e.message),
+                        Err(e) => println!("Type Error: {:?}", e),
                     }
                 }
                 Err(e) => println!("Syntax Error: {:?}", e),
@@ -78,18 +79,19 @@ pub fn start_repl() {
 
         match parser.parse_program() {
             Ok(prog) => {
-                let mut checker = TypeChecker::new();
-                match checker.check_program(&prog) {
+                match caria_semantic::analyze(&prog) {
                     Ok(_) => {
-                        match NativeCompiler::compile_to_jit(&prog) {
-                            Ok(code_ptr) => {
-                                let main_func: extern "C" fn() -> i32 = unsafe { std::mem::transmute(code_ptr) };
-                                main_func();
+                        let ir_builder = caria_ir::IrBuilder::new();
+                        if let Ok(mut ir_prog) = ir_builder.generate(&prog) {
+                            caria_ir::opt::optimize(&mut ir_prog);
+                            caria_memory::manage_ir();
+                            match caria_codegen_native::compile_to_native(&ir_prog) {
+                                Ok(_) => println!("[Executed]"),
+                                Err(e) => println!("Compilation Error: {}", e),
                             }
-                            Err(e) => println!("Compilation Error: {}", e),
                         }
                     }
-                    Err(e) => println!("Type Error: {}", e.message),
+                    Err(e) => println!("Type Error: {:?}", e),
                 }
             }
             Err(e) => println!("Syntax Error: {:?}", e),

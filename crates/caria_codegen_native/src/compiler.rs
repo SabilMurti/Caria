@@ -11,8 +11,6 @@ use cranelift_module::{Module, Linkage, FuncId, DataId, DataDescription};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::collections::HashMap;
-use std::path::Path;
-use std::fs;
 
 pub enum BackendModule {
     JIT(JITModule),
@@ -145,8 +143,6 @@ impl CariaCompiler {
         jit_builder.symbol("caria_get_env_int", crate::runtime::caria_get_env_int as *const u8);
         jit_builder.symbol("caria_get_env_txt", crate::runtime::caria_get_env_txt as *const u8);
         jit_builder.symbol("caria_str_concat", crate::runtime::caria_str_concat as *const u8);
-        jit_builder.symbol("caria_register_route", crate::runtime::caria_register_route as *const u8);
-        jit_builder.symbol("caria_start_server", crate::runtime::caria_start_server as *const u8);
         jit_builder.symbol("caria_arg_count", crate::runtime::caria_arg_count as *const u8);
         jit_builder.symbol("caria_arg_get", crate::runtime::caria_arg_get as *const u8);
         jit_builder.symbol("caria_write_file", crate::runtime::caria_write_file as *const u8);
@@ -198,21 +194,7 @@ impl CariaCompiler {
         runtime_helpers.insert("time_now_ms".to_string(), (id_time, sig_time.clone()));
         runtime_helpers.insert("time_ms".to_string(), (id_time, sig_time));
 
-        let mut sig_reg = module.make_signature();
-        sig_reg.params.push(AbiParam::new(types::I64));
-        sig_reg.params.push(AbiParam::new(types::I64));
-        sig_reg.params.push(AbiParam::new(types::I64));
-        let id_reg = module
-            .declare_function("caria_register_route", Linkage::Import, &sig_reg)
-            .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("caria_register_route".to_string(), (id_reg, sig_reg));
 
-        let mut sig_start = module.make_signature();
-        sig_start.params.push(AbiParam::new(types::I64));
-        let id_start = module
-            .declare_function("caria_start_server", Linkage::Import, &sig_start)
-            .map_err(|e| e.to_string())?;
-        runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
 
         let mut sig_concat = module.make_signature();
         sig_concat.params.push(AbiParam::new(types::I64));
@@ -453,11 +435,88 @@ impl CariaCompiler {
         }
     }
 
+    /// Flatten RouteGroup (prefix injection) and ResourceRoute (7 CRUD routes) into plain
+    /// RouteDecl nodes. Returns a new Statement list ready for the two-phase compile.
+    fn flatten_statements(&self, stmts: &[Statement], prefix: &str) -> Vec<Statement> {
+        let mut out = Vec::new();
+        for stmt in stmts {
+            match stmt {
+                // Pass-through: already flat
+                Statement::RouteDecl(route) => {
+                    let mut r = route.clone();
+                    r.path = format!("{}{}", prefix, route.path);
+                    out.push(Statement::RouteDecl(r));
+                }
+                // Route group: recurse with combined prefix
+                Statement::RouteGroup(group) => {
+                    let new_prefix = format!("{}{}", prefix, group.prefix);
+                    let nested = self.flatten_statements(&group.body, &new_prefix);
+                    out.extend(nested);
+                }
+                // Resource route: expand into up to 7 CRUD routes
+                Statement::ResourceRoute(res) => {
+                    let base = format!("{}{}", prefix, res.path);
+                    let ctrl = &res.controller;
+                    // All 7 REST conventions:
+                    let all_actions: &[(&str, &str, &str)] = &[
+                        ("GET",    &base,               "index"),
+                        ("POST",   &base,               "store"),
+                        ("GET",    &format!("{base}/{{id}}"),  "show"),
+                        ("PUT",    &format!("{base}/{{id}}"),  "update"),
+                        ("PATCH",  &format!("{base}/{{id}}"),  "patch"),
+                        ("DELETE", &format!("{base}/{{id}}"),  "destroy"),
+                        ("GET",    &format!("{base}/create"),  "create"),
+                    ];
+                    for (method_s, path, action) in all_actions {
+                        // Apply `only` / `except` filters
+                        if let Some(ref only) = res.only {
+                            if !only.iter().any(|a| a == action) { continue; }
+                        }
+                        if let Some(ref except) = res.except {
+                            if except.iter().any(|a| a == action) { continue; }
+                        }
+                        let http_method = match *method_s {
+                            "GET"    => ast::HttpMethod::Get,
+                            "POST"   => ast::HttpMethod::Post,
+                            "PUT"    => ast::HttpMethod::Put,
+                            "PATCH"  => ast::HttpMethod::Patch,
+                            "DELETE" => ast::HttpMethod::Delete,
+                            _ => unreachable!(),
+                        };
+                        // Body: call ctrl.action()
+                        let call_expr = ast::Expression::CallExpr {
+                            callee: Box::new(ast::Expression::MemberAccess {
+                                object: Box::new(ast::Expression::Identifier(ctrl.clone())),
+                                member: action.to_string(),
+                                is_safe: false,
+                            }),
+                            args: vec![],
+                        };
+                        out.push(Statement::RouteDecl(ast::RouteDecl {
+                            method: http_method,
+                            path: path.to_string(),
+                            body: vec![Statement::RetStmt(call_expr)],
+                            decorators: vec![],
+                            with_clauses: vec![],
+                        }));
+                    }
+                }
+                // Everything else passes through unchanged
+                other => out.push(other.clone()),
+            }
+        }
+        out
+    }
+
     fn compile_all(&mut self, program: &Program) -> Result<(), String> {
+        // Pre-pass: flatten RouteGroup and ResourceRoute into plain RouteDecls
+        // Must happen before the mutable borrow of self.module
+        let flat = self.flatten_statements(&program.statements, "");
+
         let mod_ref = self.module.as_mut().ok_or("Module not initialized")?;
 
         // Phase 1: Declare all functions (runes & routes)
-        for stmt in &program.statements {
+        for stmt in &flat {
             match stmt {
                 Statement::RuneDecl(rune) => {
                     let mut sig = mod_ref.make_signature();
@@ -505,7 +564,7 @@ impl CariaCompiler {
         }
 
         // Phase 2: Compile bodies
-        for stmt in &program.statements {
+        for stmt in &flat {
             match stmt {
                 Statement::RuneDecl(rune) => {
                     self.compile_rune(rune)?;
@@ -642,7 +701,7 @@ impl CariaCompiler {
         builder.switch_to_block(entry_block);
         builder.seal_block(entry_block);
 
-        let mut variables = HashMap::new();
+        let variables = HashMap::new();
         let mut next_var_index = 0;
         
         let mut helper = FunctionEmitter {

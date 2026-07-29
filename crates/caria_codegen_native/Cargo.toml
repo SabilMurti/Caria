@@ -11,6 +11,8 @@ cranelift-jit = "0.106"
 cranelift-object = "0.106"
 object = "0.32"
 target-lexicon = "0.12"
+cranelift-native = "0.106"
+caria_ir = { path = "../caria_ir" }
 caria_parser = { path = "../caria_parser" }
 caria_lexer = { path = "../caria_lexer" }
 tiny_http = "0.12"

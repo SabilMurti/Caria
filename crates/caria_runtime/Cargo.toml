@@ -1,0 +1,8 @@
+[package]
+name = "caria_runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.34", features = ["full"] }
+caria_memory = { path = "../caria_memory" }

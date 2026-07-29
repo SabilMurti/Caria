@@ -8,6 +8,9 @@ pub struct Program {
 // ── Top-level Statements ─────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
+    // Include directive
+    Include(String),        // include "path/file.cria"
+
     // Function / Rune
     RuneDecl(RuneDecl),
 
@@ -15,6 +18,8 @@ pub enum Statement {
     ConstDecl(ConstDecl),   // name = value  (immutable, keyword-less)
     MutDecl(MutDecl),       // name := value (mutable)
     AssignStmt(AssignStmt), // name = value  (reassignment of existing mut)
+    NullAssignStmt { name: String, value: Expression }, // name ?= value
+    DestructureAssign { names: Vec<String>, value: Expression }, // a, b = value
 
     // Expressions used as statements
     ExprStmt(Expression),
@@ -30,8 +35,13 @@ pub enum Statement {
     // Early-exit guard
     GuardStmt(GuardStmt),
 
+    // Fallthrough for pattern matching
+    FallthroughStmt,
+
     // HTTP Routing
     RouteDecl(RouteDecl),
+    RouteGroup(RouteGroupStmt),
+    ResourceRoute(ResourceRouteStmt),
 
     // Database / ORM
     ModelDecl(ModelDecl),
@@ -55,6 +65,7 @@ pub enum Statement {
 
     // Output
     SayStmt(Expression),
+    SayLevel { level: String, args: Vec<Expression> },  // say.info("msg")
 
     // Tests
     TestDecl(TestDecl),
@@ -76,6 +87,7 @@ pub struct RuneParam {
     pub name: String,
     pub type_expr: TypeExpr,
     pub default_value: Option<Expression>,
+    pub is_variadic: bool,   // rune f(nums: int...)
 }
 
 /// Rune body: either a full block or an inline `=> expr` shorthand
@@ -96,6 +108,8 @@ pub enum TypeExpr {
     Map(Box<TypeExpr>, Box<TypeExpr>),
     /// Optional / nullable type: Type?
     Optional(Box<TypeExpr>),
+    /// Non-empty array type: [T]+
+    NonEmptyArray(Box<TypeExpr>),
 }
 
 // ── Variable Declarations ─────────────────────────────────────────────────────
@@ -155,6 +169,7 @@ pub struct ForRangeStmt {
     pub end: Box<Expression>,
     pub step: Option<Box<Expression>>,
     pub body: Vec<Statement>,
+    pub else_body: Option<Vec<Statement>>,  // for ... { } else { }
 }
 
 /// for item [, index] in collection
@@ -164,6 +179,7 @@ pub struct ForInStmt {
     pub index_var: Option<String>,
     pub collection: Box<Expression>,
     pub body: Vec<Statement>,
+    pub else_body: Option<Vec<Statement>>,  // for ... in ... { } else { }
 }
 
 // ── HTTP Routing ──────────────────────────────────────────────────────────────
@@ -182,6 +198,29 @@ pub struct RouteDecl {
     pub path: String,       // "/users/{id}"
     pub body: Vec<Statement>,
     pub decorators: Vec<RouteDecorator>,
+    pub with_clauses: Vec<WithClause>,  // with rate_limit(100), cors("url")
+}
+
+/// Inline middleware: `with rate_limit(100), cors("url")` after route path
+#[derive(Debug, PartialEq, Clone)]
+pub struct WithClause {
+    pub name: String,
+    pub args: Vec<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct RouteGroupStmt {
+    pub prefix: String,
+    pub decorators: Vec<RouteDecorator>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ResourceRouteStmt {
+    pub path: String,
+    pub controller: String,
+    pub only: Option<Vec<String>>,
+    pub except: Option<Vec<String>>,
 }
 
 /// Route-level decorators: @rate_limit, @auth, @cors, etc.
@@ -418,6 +457,12 @@ pub enum Expression {
         start: Box<Expression>,
         end: Box<Expression>,
     },
+
+    // Nullable type cast: expr as? Type  — returns nil on failure
+    NullableCast {
+        expr: Box<Expression>,
+        target_type: TypeExpr,
+    },
 }
 
 // ── When Arms ─────────────────────────────────────────────────────────────────
@@ -443,6 +488,7 @@ pub enum Literal {
     Str(String),
     Bool(bool),
     Nil,
+    Unit(i64, String),  // 5s, 10mb, 7d — value + unit string
 }
 
 // ── Binary Operators ──────────────────────────────────────────────────────────

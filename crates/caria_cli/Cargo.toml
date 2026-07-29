@@ -6,11 +6,15 @@ edition = "2021"
 [dependencies]
 caria_lexer = { path = "../caria_lexer" }
 caria_parser = { path = "../caria_parser" }
+caria_diagnostic = { path = "../caria_diagnostic" }
+caria_formatter = { path = "../caria_formatter" }
 caria_codegen_native = { path = "../caria_codegen_native" }
 caria_codegen_wasm = { path = "../caria_codegen_wasm" }
-caria_diagnostic = { path = "../caria_diagnostic" }
+caria_semantic = { path = "../caria_semantic" }
+caria_ir = { path = "../caria_ir" }
+caria_memory = { path = "../caria_memory" }
+caria_runtime = { path = "../caria_runtime" }
 caria_lsp = { path = "../caria_lsp" }
-caria_formatter = { path = "../caria_formatter" }
 caria_mcp = { path = "../caria_mcp" }
 caria_repl = { path = "../caria_repl" }
 caria_watch = { path = "../caria_watch" }

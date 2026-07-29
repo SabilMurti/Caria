@@ -164,6 +164,7 @@ impl TypeChecker {
             Expression::Literal(Literal::Str(_)) => Ok(("Str".into(), false)),
             Expression::Literal(Literal::Bool(_)) => Ok(("Bool".into(), false)),
             Expression::Literal(Literal::Nil) => Ok(("Any".into(), true)),
+            Expression::Literal(Literal::Unit(_, _)) => Ok(("Duration".into(), false)),
 
             Expression::Identifier(name) => {
                 if let Some(t) = self.env.get(name) {
@@ -272,6 +273,13 @@ impl TypeChecker {
             Expression::StructInst { .. } => Ok(("Struct".into(), false)),
             Expression::ErrorPropagate(_) => Ok(("Any".into(), false)),
             Expression::EnvExpr(_) => Ok(("Str".into(), false)),
+            Expression::NullableCast { target_type, .. } => {
+                let name = match target_type {
+                    caria_parser::ast::TypeExpr::Named(n) => n.clone(),
+                    _ => "Any".into(),
+                };
+                Ok((name, false))
+            }
         }
     }
 }

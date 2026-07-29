@@ -15,6 +15,7 @@ pub enum Token {
     #[token("else")]        Else,
     #[token("unless")]      Unless,         // inverted if (unless x { })
     #[token("when")]        When,           // Kotlin-style pattern match
+    #[token("fallthrough")] Fallthrough,    // explicit fallthrough for when
     #[token("guard")]       Guard,          // Swift-style early-exit guard
     #[token("while")]       While,
     #[token("for")]         For,
@@ -27,6 +28,13 @@ pub enum Token {
     #[token("put")]         Put,
     #[token("patch")]       Patch,
     #[token("delete")]      Delete,
+    #[token("route")]       RouteGroup,
+    #[token("resource")]    ResourceRoute,
+    #[token("only")]        Only,
+    #[token("except")]      Except,
+
+    // Modules & Code Organization
+    #[token("include")]     Include,
 
     // Database / ORM
     #[token("model")]       Model,
@@ -42,6 +50,7 @@ pub enum Token {
     // Web Blocks
     #[token("validate")]    Validate,
     #[token("stream")]      Stream,
+    #[token("socket")]      Socket,
     #[token("transaction")] Transaction,
     #[token("queue")]       Queue,
     #[token("cache")]       Cache,
@@ -68,6 +77,7 @@ pub enum Token {
     #[token("or")]          Or,
     #[token("not")]         Not,
     #[token("is")]          Is,
+    #[token("as?")]         SafeAs,
     #[token("as")]          As,
 
     // ── Operators & Punctuation ──────────────────────────────────────────────
@@ -97,6 +107,7 @@ pub enum Token {
     #[token("=")]   Eq,             // constant assignment / reassignment
 
     // Special Operators (multi-char first)
+    #[token("...")]  Ellipsis,       // varargs parameter: rune f(x: int...)
     #[token("->")]  Arrow,          // return type annotation
     #[token("=>")]  FatArrow,       // inline rune body / when arm
     #[token("|>")]  Pipe,           // pipe operator
@@ -128,6 +139,19 @@ pub enum Token {
     // Float / Decimal literal (must be before Int to avoid partial match)
     #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().ok())]
     Float(f64),
+
+    // Unit literal: 5s, 10mb, 7d, 100ms, 1h, 1kb, 1gb (must be before Int)
+    #[regex(r"[0-9]+(ms|kb|mb|gb|s|m|h|d)", |lex| {
+        let s = lex.slice();
+        let unit_start = s.find(|c: char| c.is_alphabetic()).unwrap_or(s.len());
+        if let Ok(value) = s[..unit_start].parse::<i64>() {
+            let unit = s[unit_start..].to_string();
+            Some((value, unit))
+        } else {
+            None
+        }
+    }, priority = 3)]
+    UnitLiteral((i64, String)),
 
     // Integer literal
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
