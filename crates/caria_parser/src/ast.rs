@@ -102,10 +102,14 @@ pub enum RuneBody {
 pub enum TypeExpr {
     /// Primitive types: int, dec, txt, flag, nil
     Named(String),
+    /// Generic type: Name<Type, Type>
+    Generic(String, Vec<TypeExpr>),
     /// List type: [Type]
     List(Box<TypeExpr>),
     /// Map type: [Key:Value]
     Map(Box<TypeExpr>, Box<TypeExpr>),
+    /// Function type: (Type, Type) -> Type
+    Function(Vec<TypeExpr>, Box<TypeExpr>),
     /// Optional / nullable type: Type?
     Optional(Box<TypeExpr>),
     /// Non-empty array type: [T]+
@@ -235,6 +239,7 @@ pub struct RouteDecorator {
 pub struct ModelDecl {
     pub name: String,
     pub fields: Vec<ModelField>,
+    pub methods: Vec<RuneDecl>,
     pub is_public: bool,
     pub doc_comment: Option<String>,
 }

@@ -148,6 +148,16 @@ impl CariaCompiler {
         jit_builder.symbol("caria_write_file", crate::runtime::caria_write_file as *const u8);
         jit_builder.symbol("caria_create_dir", crate::runtime::caria_create_dir as *const u8);
         jit_builder.symbol("caria_run_cmd", crate::runtime::caria_run_cmd as *const u8);
+        jit_builder.symbol("caria_obj_alloc", crate::runtime::caria_obj_alloc as *const u8);
+        jit_builder.symbol("caria_obj_set", crate::runtime::caria_obj_set as *const u8);
+        jit_builder.symbol("caria_obj_get", crate::runtime::caria_obj_get as *const u8);
+        jit_builder.symbol("caria_obj_free", crate::runtime::caria_obj_free as *const u8);
+        jit_builder.symbol("caria_array_alloc", crate::runtime::caria_array_alloc as *const u8);
+        jit_builder.symbol("caria_array_push", crate::runtime::caria_array_push as *const u8);
+        jit_builder.symbol("caria_array_get", crate::runtime::caria_array_get as *const u8);
+        jit_builder.symbol("caria_array_free", crate::runtime::caria_array_free as *const u8);
+        jit_builder.symbol("caria_hash_str", crate::runtime::caria_hash_str as *const u8);
+        jit_builder.symbol("caria_closure_alloc", crate::runtime::caria_closure_alloc as *const u8);
 
         let mut module = JITModule::new(jit_builder);
 
@@ -249,6 +259,69 @@ impl CariaCompiler {
         let id_view = module
             .declare_function("caria_view", Linkage::Import, &sig_view)
             .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_view".to_string(), (id_view, sig_view.clone()));
+
+        // OOP FFI
+        let mut sig_obj_alloc = module.make_signature();
+        sig_obj_alloc.params.push(AbiParam::new(types::I64)); // class_hash
+        sig_obj_alloc.returns.push(AbiParam::new(types::I64));
+        let id_obj_alloc = module.declare_function("caria_obj_alloc", Linkage::Import, &sig_obj_alloc).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_alloc".to_string(), (id_obj_alloc, sig_obj_alloc));
+
+        let mut sig_obj_set = module.make_signature();
+        sig_obj_set.params.push(AbiParam::new(types::I64)); // obj
+        sig_obj_set.params.push(AbiParam::new(types::I64)); // field_hash
+        sig_obj_set.params.push(AbiParam::new(types::I64)); // val
+        let id_obj_set = module.declare_function("caria_obj_set", Linkage::Import, &sig_obj_set).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_set".to_string(), (id_obj_set, sig_obj_set));
+
+        let mut sig_obj_get = module.make_signature();
+        sig_obj_get.params.push(AbiParam::new(types::I64)); // obj
+        sig_obj_get.params.push(AbiParam::new(types::I64)); // field_hash
+        sig_obj_get.returns.push(AbiParam::new(types::I64));
+        let id_obj_get = module.declare_function("caria_obj_get", Linkage::Import, &sig_obj_get).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_get".to_string(), (id_obj_get, sig_obj_get));
+
+        let mut sig_obj_free = module.make_signature();
+        sig_obj_free.params.push(AbiParam::new(types::I64)); // obj
+        let id_obj_free = module.declare_function("caria_obj_free", Linkage::Import, &sig_obj_free).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_free".to_string(), (id_obj_free, sig_obj_free));
+
+        let mut sig_arr_alloc = module.make_signature();
+        sig_arr_alloc.returns.push(AbiParam::new(types::I64));
+        let id_arr_alloc = module.declare_function("caria_array_alloc", Linkage::Import, &sig_arr_alloc).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_alloc".to_string(), (id_arr_alloc, sig_arr_alloc));
+
+        let mut sig_arr_push = module.make_signature();
+        sig_arr_push.params.push(AbiParam::new(types::I64));
+        sig_arr_push.params.push(AbiParam::new(types::I64));
+        let id_arr_push = module.declare_function("caria_array_push", Linkage::Import, &sig_arr_push).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_push".to_string(), (id_arr_push, sig_arr_push));
+
+        let mut sig_arr_get = module.make_signature();
+        sig_arr_get.params.push(AbiParam::new(types::I64));
+        sig_arr_get.params.push(AbiParam::new(types::I64));
+        sig_arr_get.returns.push(AbiParam::new(types::I64));
+        let id_arr_get = module.declare_function("caria_array_get", Linkage::Import, &sig_arr_get).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_get".to_string(), (id_arr_get, sig_arr_get));
+
+        let mut sig_arr_free = module.make_signature();
+        sig_arr_free.params.push(AbiParam::new(types::I64)); // arr
+        let id_arr_free = module.declare_function("caria_array_free", Linkage::Import, &sig_arr_free).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_free".to_string(), (id_arr_free, sig_arr_free));
+
+        let mut sig_hash_str = module.make_signature();
+        sig_hash_str.params.push(AbiParam::new(types::I64));
+        sig_hash_str.params.push(AbiParam::new(types::I64));
+        sig_hash_str.returns.push(AbiParam::new(types::I64));
+        let id_hash_str = module.declare_function("caria_hash_str", Linkage::Import, &sig_hash_str).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_hash_str".to_string(), (id_hash_str, sig_hash_str));
+
+        let mut sig_clos_alloc = module.make_signature();
+        sig_clos_alloc.params.push(AbiParam::new(types::I64)); // func_ptr
+        sig_clos_alloc.returns.push(AbiParam::new(types::I64));
+        let id_clos_alloc = module.declare_function("caria_closure_alloc", Linkage::Import, &sig_clos_alloc).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_closure_alloc".to_string(), (id_clos_alloc, sig_clos_alloc));
         runtime_helpers.insert("view".to_string(), (id_view, sig_view));
 
 
@@ -389,7 +462,106 @@ impl CariaCompiler {
         let id_view = module
             .declare_function("caria_view", Linkage::Import, &sig_view)
             .map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_view".to_string(), (id_view, sig_view.clone()));
         runtime_helpers.insert("view".to_string(), (id_view, sig_view));
+
+        // OOP FFI
+        let mut sig_obj_alloc = module.make_signature();
+        sig_obj_alloc.params.push(AbiParam::new(types::I64)); // class_hash
+        sig_obj_alloc.returns.push(AbiParam::new(types::I64));
+        let id_obj_alloc = module.declare_function("caria_obj_alloc", Linkage::Import, &sig_obj_alloc).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_alloc".to_string(), (id_obj_alloc, sig_obj_alloc));
+
+        let mut sig_obj_set = module.make_signature();
+        sig_obj_set.params.push(AbiParam::new(types::I64)); // obj
+        sig_obj_set.params.push(AbiParam::new(types::I64)); // field_hash
+        sig_obj_set.params.push(AbiParam::new(types::I64)); // val
+        let id_obj_set = module.declare_function("caria_obj_set", Linkage::Import, &sig_obj_set).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_set".to_string(), (id_obj_set, sig_obj_set));
+
+        let mut sig_obj_get = module.make_signature();
+        sig_obj_get.params.push(AbiParam::new(types::I64)); // obj
+        sig_obj_get.params.push(AbiParam::new(types::I64)); // field_hash
+        sig_obj_get.returns.push(AbiParam::new(types::I64));
+        let id_obj_get = module.declare_function("caria_obj_get", Linkage::Import, &sig_obj_get).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_get".to_string(), (id_obj_get, sig_obj_get));
+
+        let mut sig_obj_free = module.make_signature();
+        sig_obj_free.params.push(AbiParam::new(types::I64)); // obj
+        let id_obj_free = module.declare_function("caria_obj_free", Linkage::Import, &sig_obj_free).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_obj_free".to_string(), (id_obj_free, sig_obj_free));
+
+        let mut sig_arr_alloc = module.make_signature();
+        sig_arr_alloc.returns.push(AbiParam::new(types::I64));
+        let id_arr_alloc = module.declare_function("caria_array_alloc", Linkage::Import, &sig_arr_alloc).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_alloc".to_string(), (id_arr_alloc, sig_arr_alloc));
+
+        let mut sig_arr_push = module.make_signature();
+        sig_arr_push.params.push(AbiParam::new(types::I64));
+        sig_arr_push.params.push(AbiParam::new(types::I64));
+        let id_arr_push = module.declare_function("caria_array_push", Linkage::Import, &sig_arr_push).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_push".to_string(), (id_arr_push, sig_arr_push));
+
+        let mut sig_arr_get = module.make_signature();
+        sig_arr_get.params.push(AbiParam::new(types::I64));
+        sig_arr_get.params.push(AbiParam::new(types::I64));
+        sig_arr_get.returns.push(AbiParam::new(types::I64));
+        let id_arr_get = module.declare_function("caria_array_get", Linkage::Import, &sig_arr_get).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_get".to_string(), (id_arr_get, sig_arr_get));
+
+        let mut sig_arr_free = module.make_signature();
+        sig_arr_free.params.push(AbiParam::new(types::I64)); // arr
+        let id_arr_free = module.declare_function("caria_array_free", Linkage::Import, &sig_arr_free).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_array_free".to_string(), (id_arr_free, sig_arr_free));
+
+        let mut sig_hash_str = module.make_signature();
+        sig_hash_str.params.push(AbiParam::new(types::I64));
+        sig_hash_str.params.push(AbiParam::new(types::I64));
+        sig_hash_str.returns.push(AbiParam::new(types::I64));
+        let id_hash_str = module.declare_function("caria_hash_str", Linkage::Import, &sig_hash_str).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_hash_str".to_string(), (id_hash_str, sig_hash_str));
+
+        let mut sig_clos_alloc = module.make_signature();
+        sig_clos_alloc.params.push(AbiParam::new(types::I64)); // func_ptr
+        sig_clos_alloc.returns.push(AbiParam::new(types::I64));
+        let id_clos_alloc = module.declare_function("caria_closure_alloc", Linkage::Import, &sig_clos_alloc).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_closure_alloc".to_string(), (id_clos_alloc, sig_clos_alloc));
+
+        // Crypto FFI
+        let mut sig_hash_argon = module.make_signature();
+        sig_hash_argon.params.push(AbiParam::new(types::I64)); // pass_ptr
+        sig_hash_argon.returns.push(AbiParam::new(types::I64)); // hash_ptr
+        let id_hash_argon = module.declare_function("caria_crypto_argon2_hash", Linkage::Import, &sig_hash_argon).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_crypto_argon2_hash".to_string(), (id_hash_argon, sig_hash_argon));
+
+        let mut sig_verify_argon = module.make_signature();
+        sig_verify_argon.params.push(AbiParam::new(types::I64)); // pass_ptr
+        sig_verify_argon.params.push(AbiParam::new(types::I64)); // hash_ptr
+        sig_verify_argon.returns.push(AbiParam::new(types::I64)); // bool (0 or 1)
+        let id_verify_argon = module.declare_function("caria_crypto_argon2_verify", Linkage::Import, &sig_verify_argon).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_crypto_argon2_verify".to_string(), (id_verify_argon, sig_verify_argon));
+
+        // JSON FFI
+        let mut sig_json_parse = module.make_signature();
+        sig_json_parse.params.push(AbiParam::new(types::I64)); // json_str_ptr
+        sig_json_parse.returns.push(AbiParam::new(types::I64)); // CariaObject/Array ptr
+        let id_json_parse = module.declare_function("caria_json_parse", Linkage::Import, &sig_json_parse).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_json_parse".to_string(), (id_json_parse, sig_json_parse));
+
+        // MySQL FFI
+        let mut sig_mysql_conn = module.make_signature();
+        sig_mysql_conn.params.push(AbiParam::new(types::I64)); // url_ptr
+        sig_mysql_conn.returns.push(AbiParam::new(types::I64)); // pool_id
+        let id_mysql_conn = module.declare_function("caria_mysql_connect", Linkage::Import, &sig_mysql_conn).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_mysql_connect".to_string(), (id_mysql_conn, sig_mysql_conn));
+
+        let mut sig_mysql_query = module.make_signature();
+        sig_mysql_query.params.push(AbiParam::new(types::I64)); // pool_id
+        sig_mysql_query.params.push(AbiParam::new(types::I64)); // query_ptr
+        sig_mysql_query.returns.push(AbiParam::new(types::I64)); // json_arr_ptr (CariaArray)
+        let id_mysql_query = module.declare_function("caria_mysql_query", Linkage::Import, &sig_mysql_query).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_mysql_query".to_string(), (id_mysql_query, sig_mysql_query));
+
 
 
         Ok(Self {
@@ -1021,7 +1193,28 @@ impl<'a> FunctionEmitter<'a> {
                         Err(format!("Undefined function call: {}", name))
                     }
                 } else {
-                    Err("Dynamic function pointers not supported natively yet".to_string())
+                    // Dynamic function pointer call
+                    let func_ptr = self.compile_expr(callee)?;
+                    let mut compiled_args = Vec::new();
+                    for arg in args {
+                        compiled_args.push(self.compile_expr(arg)?);
+                    }
+                    
+                    let mut sig = self.module.make_signature();
+                    for _ in args {
+                        sig.params.push(AbiParam::new(types::I64));
+                    }
+                    // Assuming returning I64 for dynamic dispatch
+                    sig.returns.push(AbiParam::new(types::I64));
+                    
+                    let sig_ref = self.builder.import_signature(sig);
+                    let inst = self.builder.ins().call_indirect(sig_ref, func_ptr, &compiled_args);
+                    
+                    if !self.builder.inst_results(inst).is_empty() {
+                        Ok(self.builder.inst_results(inst)[0])
+                    } else {
+                        Ok(self.builder.ins().iconst(types::I64, 0))
+                    }
                 }
             }
             Expression::WhenExpr { subject, arms } => {
@@ -1091,6 +1284,72 @@ impl<'a> FunctionEmitter<'a> {
                 let helper_id = self.runtime_helpers.get("caria_get_env_txt").unwrap().0;
                 let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
                 let inst = self.builder.ins().call(local_ref, &[key_ptr]);
+                Ok(self.builder.inst_results(inst)[0])
+            }
+            Expression::StructInst { name, fields } => {
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                std::hash::Hash::hash(name, &mut hasher);
+                let class_hash_val = self.builder.ins().iconst(types::I64, std::hash::Hasher::finish(&hasher) as i64);
+                
+                let helper_alloc_id = self.runtime_helpers.get("caria_obj_alloc").unwrap().0;
+                let alloc_ref = self.module.declare_func_in_func(helper_alloc_id, &mut self.builder.func);
+                let inst = self.builder.ins().call(alloc_ref, &[class_hash_val]);
+                let obj_ptr = self.builder.inst_results(inst)[0];
+
+                let helper_set_id = self.runtime_helpers.get("caria_obj_set").unwrap().0;
+                let set_ref = self.module.declare_func_in_func(helper_set_id, &mut self.builder.func);
+                
+                for (field_name, field_val_expr) in fields {
+                    let val = self.compile_expr(field_val_expr)?;
+                    let mut field_hasher = std::collections::hash_map::DefaultHasher::new();
+                    std::hash::Hash::hash(field_name, &mut field_hasher);
+                    let field_hash_val = self.builder.ins().iconst(types::I64, std::hash::Hasher::finish(&field_hasher) as i64);
+                    self.builder.ins().call(set_ref, &[obj_ptr, field_hash_val, val]);
+                }
+                
+                Ok(obj_ptr)
+            }
+            Expression::MemberAccess { object, member, .. } => {
+                let obj_ptr = self.compile_expr(object)?;
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                std::hash::Hash::hash(member, &mut hasher);
+                let field_hash_val = self.builder.ins().iconst(types::I64, std::hash::Hasher::finish(&hasher) as i64);
+                
+                let helper_get_id = self.runtime_helpers.get("caria_obj_get").unwrap().0;
+                let get_ref = self.module.declare_func_in_func(helper_get_id, &mut self.builder.func);
+                let inst = self.builder.ins().call(get_ref, &[obj_ptr, field_hash_val]);
+                Ok(self.builder.inst_results(inst)[0])
+            }
+            Expression::ArrayLiteral(elements) => {
+                let helper_alloc_id = self.runtime_helpers.get("caria_array_alloc").unwrap().0;
+                let alloc_ref = self.module.declare_func_in_func(helper_alloc_id, &mut self.builder.func);
+                let inst = self.builder.ins().call(alloc_ref, &[]);
+                let arr_ptr = self.builder.inst_results(inst)[0];
+
+                let helper_push_id = self.runtime_helpers.get("caria_array_push").unwrap().0;
+                let push_ref = self.module.declare_func_in_func(helper_push_id, &mut self.builder.func);
+                
+                for el in elements {
+                    let val = self.compile_expr(el)?;
+                    self.builder.ins().call(push_ref, &[arr_ptr, val]);
+                }
+                
+                Ok(arr_ptr)
+            }
+            Expression::IndexExpr { object, index } => {
+                let arr_ptr = self.compile_expr(object)?;
+                let idx_val = self.compile_expr(index)?;
+                
+                let helper_get_id = self.runtime_helpers.get("caria_array_get").unwrap().0;
+                let get_ref = self.module.declare_func_in_func(helper_get_id, &mut self.builder.func);
+                let inst = self.builder.ins().call(get_ref, &[arr_ptr, idx_val]);
+                Ok(self.builder.inst_results(inst)[0])
+            }
+            Expression::ClosureExpr { .. } => {
+                let helper_alloc_id = self.runtime_helpers.get("caria_closure_alloc").unwrap().0;
+                let alloc_ref = self.module.declare_func_in_func(helper_alloc_id, &mut self.builder.func);
+                let dummy_ptr = self.builder.ins().iconst(types::I64, 0);
+                let inst = self.builder.ins().call(alloc_ref, &[dummy_ptr]);
                 Ok(self.builder.inst_results(inst)[0])
             }
             _ => {

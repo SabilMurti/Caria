@@ -8,24 +8,25 @@ pub fn compile_to_native(ir: &IrProgram) -> Result<(), String> {
     jit.compile(ir)
 }
 
+pub mod compiler;
+pub mod runtime;
+
 pub struct NativeCompiler;
 
 impl NativeCompiler {
-    pub fn compile_to_object(_prog: &caria_parser::ast::Program) -> Result<Vec<u8>, String> {
-        Ok(vec![])
+    pub fn compile_to_object(prog: &caria_parser::ast::Program) -> Result<Vec<u8>, String> {
+        let mut compiler = compiler::CariaCompiler::new_object()?;
+        compiler.compile_to_object(prog)
     }
     
-    pub fn compile_to_jit(_prog: &caria_parser::ast::Program) -> Result<*const u8, String> {
-        Ok(std::ptr::null())
+    pub fn compile_to_jit(prog: &caria_parser::ast::Program) -> Result<*const u8, String> {
+        let mut compiler = compiler::CariaCompiler::new_jit()?;
+        compiler.compile_to_jit(prog)
     }
     
-    pub fn compile_and_get_function(_prog: &caria_parser::ast::Program, _name: &str) -> Result<extern "C" fn() -> i32, String> {
-        Ok(dummy_main)
+    pub fn compile_and_get_function(prog: &caria_parser::ast::Program, name: &str) -> Result<extern "C" fn() -> i32, String> {
+        let mut compiler = compiler::CariaCompiler::new_jit()?;
+        let ptr = compiler.compile_and_get_function(prog, name)?;
+        Ok(unsafe { std::mem::transmute(ptr) })
     }
-}
-
-extern "C" fn dummy_main() -> i32 { 0 }
-
-pub mod runtime {
-    pub fn caria_set_args(_len: i32, _ptr: *const *const u8) {}
 }

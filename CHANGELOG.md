@@ -5,6 +5,23 @@ All notable changes to the Calesteria programming language will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-29
+### Added
+- **Native Backend FFI**: Integrated `libcaria_runtime.a` as a static Rust library instead of C string stubs, allowing pure Rust dependencies.
+- **Asynchronous MySQL Engine**: Added non-blocking MySQL bindings (`caria_mysql_connect`, `caria_mysql_query`) converted dynamically into Caria Object Arrays via `mysql_async`.
+- **Argon2id Cryptography**: Implemented industry-standard Argon2id hashing (`caria_crypto_argon2_hash`, `caria_crypto_argon2_verify`) natively via FFI.
+- **Native JSON Parser**: Embedded `serde_json` to parse JSON strings directly into native OOP `CariaObject` memory graphs (`caria_json_parse`).
+- **Closure Expression Syntax**: Implemented full AST and parser support for inline `rune` closures in expressions (`rune(req: Request) -> Response { ... }`).
+- **Generic Type Parsing in Rune Declarations**: Added parser consumption of generics like `json<T>()` to resolve `Expected LBrace, got Less` parser bugs.
+
+### Changed
+- **Compiler Linker Upgrade**: `caria_cli` now links `.o` files with `libcaria_runtime.a` via System C Compiler `cc`, dropping the old C stub strategy.
+- **CLI Decoupling**: Reverted the `caria.json` script runner logic from `caria_cli`. `caria_cli` is now strictly a compiler and runtime (like `php`). All framework task execution is now handled by the Calesteria `cast` engine.
+
+### Fixed
+- **Lexer Error Tracing**: Improved syntax error reporting to include accurate file spans on lexer failure.
+- **Parser Assignment Safety**: Fixed a critical bug causing parser crashes when assigning to non-identifiers (like index/member expressions).
+
 ## [0.2.0] - 2026-07-26
 ### Added
 - **100% Zero-JS Pure Native SSR Engine**: Cranelift AOT native compilation producing standalone 64-bit ELF Linux executables with an integrated C POSIX HTTP server runtime.

@@ -2,6 +2,9 @@ use std::slice;
 use std::str;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 static USER_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
@@ -97,6 +100,108 @@ pub extern "C" fn caria_get_env_txt(ptr: *const u8) -> *const u8 {
     std::ptr::null()
 }
 
+// ---------------------------------------------------------
+// OOP Runtime Model
+// ---------------------------------------------------------
+
+pub struct CariaObject {
+    pub class_hash: i64,
+    pub fields: HashMap<i64, i64>,
+}
+
+pub struct CariaArray {
+    pub elements: Vec<i64>,
+}
+
+#[no_mangle]
+pub extern "C" fn caria_obj_alloc(class_hash: i64) -> i64 {
+    let obj = Box::new(CariaObject {
+        class_hash,
+        fields: HashMap::new(),
+    });
+    Box::into_raw(obj) as i64
+}
+
+#[no_mangle]
+pub extern "C" fn caria_obj_set(obj_ptr: i64, field_hash: i64, val: i64) {
+    if obj_ptr == 0 { return; }
+    let obj = unsafe { &mut *(obj_ptr as *mut CariaObject) };
+    obj.fields.insert(field_hash, val);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_obj_get(obj_ptr: i64, field_hash: i64) -> i64 {
+    if obj_ptr == 0 { return 0; }
+    let obj = unsafe { &*(obj_ptr as *mut CariaObject) };
+    *obj.fields.get(&field_hash).unwrap_or(&0)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_obj_free(obj_ptr: i64) {
+    if obj_ptr != 0 {
+        unsafe { drop(Box::from_raw(obj_ptr as *mut CariaObject)); }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_array_alloc() -> i64 {
+    let arr = Box::new(CariaArray {
+        elements: Vec::new(),
+    });
+    Box::into_raw(arr) as i64
+}
+
+#[no_mangle]
+pub extern "C" fn caria_array_push(arr_ptr: i64, val: i64) {
+    if arr_ptr == 0 { return; }
+    let arr = unsafe { &mut *(arr_ptr as *mut CariaArray) };
+    arr.elements.push(val);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_array_get(arr_ptr: i64, index: i64) -> i64 {
+    if arr_ptr == 0 { return 0; }
+    let arr = unsafe { &*(arr_ptr as *mut CariaArray) };
+    if index >= 0 && (index as usize) < arr.elements.len() {
+        arr.elements[index as usize]
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_array_free(arr_ptr: i64) {
+    if arr_ptr != 0 {
+        unsafe { drop(Box::from_raw(arr_ptr as *mut CariaArray)); }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_hash_str(ptr: *const u8, len: i64) -> i64 {
+    if ptr.is_null() || len < 0 {
+        return 0;
+    }
+    let slice = unsafe { slice::from_raw_parts(ptr, len as usize) };
+    if let Ok(s) = str::from_utf8(slice) {
+        let mut hasher = DefaultHasher::new();
+        s.hash(&mut hasher);
+        hasher.finish() as i64
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_closure_alloc(func_ptr: i64) -> i64 {
+    let obj = Box::new(CariaObject {
+        class_hash: 0, // 0 for closures
+        fields: HashMap::new(),
+    });
+    let mut obj_mut = obj;
+    // By convention, field_hash 0 stores the function pointer
+    obj_mut.fields.insert(0, func_ptr);
+    Box::into_raw(obj_mut) as i64
+}
 
 
 #[no_mangle]
