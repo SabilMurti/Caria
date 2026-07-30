@@ -1,5 +1,0 @@
-use std.std_internal { fetch_internal }
-
-pub fn fetch(url: Str) -> Str {
-    ret fetch_internal(url)
-}

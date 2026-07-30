@@ -34,7 +34,7 @@ pub enum Token {
     #[token("except")]      Except,
 
     // Modules & Code Organization
-    #[token("include")]     Include,
+    #[token("summon")]      Summon,
 
     // Database / ORM
     #[token("model")]       Model,
@@ -62,6 +62,8 @@ pub enum Token {
     #[token("client")]      Client,
 
     // Primitive Type Keywords (used in type annotations)
+    #[token("self")]        SelfKeyword,
+    #[token("this")]        ThisKeyword,
     #[token("int")]         IntType,        // 64-bit integer
     #[token("dec")]         DecType,        // exact decimal (no float errors)
     #[token("txt")]         TxtType,        // UTF-8 string

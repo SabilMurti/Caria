@@ -2,7 +2,7 @@ use caria_parser::ast::{
     self, Program, Statement, Expression, Literal, BinaryOp, UnaryOp, RuneDecl, RuneBody, TypeExpr
 };
 use cranelift_codegen::ir::{
-    self, types, AbiParam, Signature, Function, Value, InstBuilder
+    self, types, AbiParam, Signature, Function, Value, InstBuilder, Type as IrType
 };
 use cranelift_codegen::isa::{self, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
@@ -39,11 +39,12 @@ impl BackendModule {
             BackendModule::JIT(m) => m.define_function(func_id, ctx),
             BackendModule::Object(m) => m.define_function(func_id, ctx),
         };
-        if let Err(ref e) = res {
-            eprintln!("Cranelift define_function failed for function {}: {}", func_id, e);
+        if let Err(e) = res {
+            eprintln!("Cranelift define_function failed for function {}: {:?}", func_id, e);
             eprintln!("Function IR:\n{}", ctx.func);
+            return Err(e.to_string());
         }
-        res.map_err(|e| e.to_string())
+        Ok(())
     }
 
     pub fn declare_data(
@@ -101,6 +102,40 @@ pub struct RouteRegistration {
     func_id: FuncId,
 }
 
+/// Type registry for tracking class methods and their return types
+#[derive(Debug, Clone)]
+pub struct MethodSignature {
+    pub self_type: Option<String>,  // The 'self' parameter type (e.g., "Blueprint")
+    pub return_type: String,        // Return type of the method
+}
+
+pub struct ClassRegistry {
+    pub classes: HashMap<String, Vec<(String, MethodSignature)>>, // class_name -> [(method_name, signature)]
+}
+
+impl ClassRegistry {
+    pub fn new() -> Self {
+        Self {
+            classes: HashMap::new(),
+        }
+    }
+
+    pub fn register_method(&mut self, class_name: &str, method_name: &str, signature: MethodSignature) {
+        self.classes
+            .entry(class_name.to_string())
+            .or_insert_with(Vec::new)
+            .push((method_name.to_string(), signature));
+    }
+
+    pub fn get_method_signature(&self, class_name: &str, method_name: &str) -> Option<&MethodSignature> {
+        self.classes.get(class_name).and_then(|methods| {
+            methods.iter()
+                .find(|(m, _)| m == method_name)
+                .map(|(_, sig)| sig)
+        })
+    }
+}
+
 pub struct CariaCompiler {
     module: Option<BackendModule>,
     fn_builder_ctx: FunctionBuilderContext,
@@ -113,6 +148,8 @@ pub struct CariaCompiler {
     runtime_helpers: HashMap<String, (FuncId, Signature)>,
     // Registered HTTP routes
     routes: Vec<RouteRegistration>,
+    // Class method registry for type inference
+    class_registry: ClassRegistry,
 }
 
 fn translate_type(type_expr: &TypeExpr) -> ir::Type {
@@ -120,6 +157,7 @@ fn translate_type(type_expr: &TypeExpr) -> ir::Type {
         TypeExpr::Named(name) => match name.as_str() {
             "int" => types::I64,
             "flag" => types::I8,
+            "Bool" => types::I8,
             "txt" => types::I64,
             _ => types::I64,
         },
@@ -138,26 +176,46 @@ impl CariaCompiler {
         let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         
         // Register symbols to make them available in memory during execution
-        jit_builder.symbol("caria_say_int", crate::runtime::caria_say_int as *const u8);
-        jit_builder.symbol("caria_say_txt", crate::runtime::caria_say_txt as *const u8);
+        jit_builder.symbol("caria_say_int", caria_runtime::ffi_aot::caria_say_int as *const u8);
+        jit_builder.symbol("caria_say_txt", caria_runtime::ffi_aot::caria_say_txt as *const u8);
         jit_builder.symbol("caria_get_env_int", crate::runtime::caria_get_env_int as *const u8);
         jit_builder.symbol("caria_get_env_txt", crate::runtime::caria_get_env_txt as *const u8);
         jit_builder.symbol("caria_str_concat", crate::runtime::caria_str_concat as *const u8);
         jit_builder.symbol("caria_arg_count", crate::runtime::caria_arg_count as *const u8);
         jit_builder.symbol("caria_arg_get", crate::runtime::caria_arg_get as *const u8);
-        jit_builder.symbol("caria_write_file", crate::runtime::caria_write_file as *const u8);
+        jit_builder.symbol("caria_write_file", caria_runtime::ffi_aot::caria_write_file as *const u8);
         jit_builder.symbol("caria_create_dir", crate::runtime::caria_create_dir as *const u8);
-        jit_builder.symbol("caria_run_cmd", crate::runtime::caria_run_cmd as *const u8);
-        jit_builder.symbol("caria_obj_alloc", crate::runtime::caria_obj_alloc as *const u8);
-        jit_builder.symbol("caria_obj_set", crate::runtime::caria_obj_set as *const u8);
-        jit_builder.symbol("caria_obj_get", crate::runtime::caria_obj_get as *const u8);
-        jit_builder.symbol("caria_obj_free", crate::runtime::caria_obj_free as *const u8);
-        jit_builder.symbol("caria_array_alloc", crate::runtime::caria_array_alloc as *const u8);
-        jit_builder.symbol("caria_array_push", crate::runtime::caria_array_push as *const u8);
-        jit_builder.symbol("caria_array_get", crate::runtime::caria_array_get as *const u8);
-        jit_builder.symbol("caria_array_free", crate::runtime::caria_array_free as *const u8);
-        jit_builder.symbol("caria_hash_str", crate::runtime::caria_hash_str as *const u8);
-        jit_builder.symbol("caria_closure_alloc", crate::runtime::caria_closure_alloc as *const u8);
+        jit_builder.symbol("caria_run_cmd", caria_runtime::ffi_aot::caria_run_cmd as *const u8);
+        jit_builder.symbol("caria_obj_alloc", caria_runtime::ffi_aot::caria_obj_alloc as *const u8);
+        jit_builder.symbol("caria_obj_set", caria_runtime::ffi_aot::caria_obj_set as *const u8);
+        jit_builder.symbol("caria_obj_get", caria_runtime::ffi_aot::caria_obj_get as *const u8);
+        jit_builder.symbol("caria_obj_free", caria_runtime::ffi_aot::caria_obj_free as *const u8);
+        jit_builder.symbol("caria_array_alloc", caria_runtime::ffi_aot::caria_array_alloc as *const u8);
+        jit_builder.symbol("caria_array_push", caria_runtime::ffi_aot::caria_array_push as *const u8);
+        jit_builder.symbol("caria_array_get", caria_runtime::ffi_aot::caria_array_get as *const u8);
+        jit_builder.symbol("caria_array_free", caria_runtime::ffi_aot::caria_array_free as *const u8);
+        jit_builder.symbol("caria_hash_str", caria_runtime::ffi_aot::caria_hash_str as *const u8);
+        jit_builder.symbol("caria_closure_alloc", caria_runtime::ffi_aot::caria_closure_alloc as *const u8);
+        jit_builder.symbol("caria_register_route", caria_runtime::ffi_aot::caria_register_route as *const u8);
+        jit_builder.symbol("caria_start_server", caria_runtime::ffi_aot::caria_start_server as *const u8);
+        jit_builder.symbol("caria_mysql_connect", caria_runtime::ffi_aot::caria_mysql_connect as *const u8);
+        jit_builder.symbol("caria_mysql_query", caria_runtime::ffi_aot::caria_mysql_query as *const u8);
+        jit_builder.symbol("caria_crypto_argon2_hash", caria_runtime::ffi_aot::caria_crypto_argon2_hash as *const u8);
+        jit_builder.symbol("caria_crypto_argon2_verify", caria_runtime::ffi_aot::caria_crypto_argon2_verify as *const u8);
+        jit_builder.symbol("caria_crypto_aes_encrypt", caria_runtime::ffi_aot::caria_crypto_aes_encrypt as *const u8);
+        jit_builder.symbol("caria_crypto_aes_decrypt", caria_runtime::ffi_aot::caria_crypto_aes_decrypt as *const u8);
+        jit_builder.symbol("caria_fs_read", caria_runtime::ffi_aot::caria_fs_read as *const u8);
+        jit_builder.symbol("caria_fs_write", caria_runtime::ffi_aot::caria_fs_write as *const u8);
+        jit_builder.symbol("caria_fs_exists", caria_runtime::ffi_aot::caria_fs_exists as *const u8);
+        jit_builder.symbol("caria_env_get", caria_runtime::ffi_aot::caria_env_get as *const u8);
+        jit_builder.symbol("caria_hash_make", caria_runtime::ffi_aot::caria_hash_make as *const u8);
+        jit_builder.symbol("caria_hash_check", caria_runtime::ffi_aot::caria_hash_check as *const u8);
+        jit_builder.symbol("caria_log_write", caria_runtime::ffi_aot::caria_log_write as *const u8);
+        jit_builder.symbol("caria_json_encode", caria_runtime::ffi_aot::caria_json_encode as *const u8);
+        jit_builder.symbol("caria_redis_set", caria_runtime::ffi_aot::caria_redis_set as *const u8);
+        jit_builder.symbol("caria_redis_get", caria_runtime::ffi_aot::caria_redis_get as *const u8);
+        jit_builder.symbol("caria_env_get", caria_runtime::ffi_aot::caria_env_get as *const u8);
+        jit_builder.symbol("caria_json_parse", caria_runtime::ffi_aot::caria_json_parse as *const u8);
 
         let mut module = JITModule::new(jit_builder);
 
@@ -324,6 +382,119 @@ impl CariaCompiler {
         runtime_helpers.insert("caria_closure_alloc".to_string(), (id_clos_alloc, sig_clos_alloc));
         runtime_helpers.insert("view".to_string(), (id_view, sig_view));
 
+        let mut sig_start = module.make_signature();
+        sig_start.params.push(AbiParam::new(types::I64)); // port
+        let id_start = module.declare_function("caria_start_server", Linkage::Import, &sig_start).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
+
+        let mut sig_mysql_conn = module.make_signature();
+        sig_mysql_conn.params.push(AbiParam::new(types::I64)); // url_ptr
+        sig_mysql_conn.returns.push(AbiParam::new(types::I64)); // pool_id
+        let id_mysql_conn = module.declare_function("caria_mysql_connect", Linkage::Import, &sig_mysql_conn).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_mysql_connect".to_string(), (id_mysql_conn, sig_mysql_conn));
+
+        let mut sig_mysql_query = module.make_signature();
+        sig_mysql_query.params.push(AbiParam::new(types::I64)); // pool_id
+        sig_mysql_query.params.push(AbiParam::new(types::I64)); // query_ptr
+        sig_mysql_query.returns.push(AbiParam::new(types::I64)); // json_arr_ptr (CariaArray)
+        let id_mysql_query = module.declare_function("caria_mysql_query", Linkage::Import, &sig_mysql_query).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_mysql_query".to_string(), (id_mysql_query, sig_mysql_query));
+
+        let mut sig_hash_argon = module.make_signature();
+        sig_hash_argon.params.push(AbiParam::new(types::I64)); // pass_ptr
+        sig_hash_argon.returns.push(AbiParam::new(types::I64)); // hash_ptr
+        let id_hash_argon = module.declare_function("caria_crypto_argon2_hash", Linkage::Import, &sig_hash_argon).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_crypto_argon2_hash".to_string(), (id_hash_argon, sig_hash_argon));
+
+        let mut sig_verify_argon = module.make_signature();
+        sig_verify_argon.params.push(AbiParam::new(types::I64)); // pass_ptr
+        sig_verify_argon.params.push(AbiParam::new(types::I64)); // hash_ptr
+        sig_verify_argon.returns.push(AbiParam::new(types::I64)); // bool (0 or 1)
+        let id_verify_argon = module.declare_function("caria_crypto_argon2_verify", Linkage::Import, &sig_verify_argon).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_crypto_argon2_verify".to_string(), (id_verify_argon, sig_verify_argon));
+
+        let mut sig_crypto = module.make_signature();
+        sig_crypto.params.push(AbiParam::new(types::I64));
+        sig_crypto.params.push(AbiParam::new(types::I64));
+        sig_crypto.returns.push(AbiParam::new(types::I64));
+        let id_aes_encrypt = module.declare_function("caria_crypto_aes_encrypt", Linkage::Import, &sig_crypto).unwrap();
+        let id_aes_decrypt = module.declare_function("caria_crypto_aes_decrypt", Linkage::Import, &sig_crypto).unwrap();
+        runtime_helpers.insert("caria_crypto_aes_encrypt".to_string(), (id_aes_encrypt, sig_crypto.clone()));
+        runtime_helpers.insert("caria_crypto_aes_decrypt".to_string(), (id_aes_decrypt, sig_crypto.clone()));
+
+        let mut sig_fs_read = module.make_signature();
+        sig_fs_read.params.push(AbiParam::new(types::I64));
+        sig_fs_read.returns.push(AbiParam::new(types::I64));
+        let id_fs_read = module.declare_function("caria_fs_read", Linkage::Import, &sig_fs_read).unwrap();
+        let id_fs_exists = module.declare_function("caria_fs_exists", Linkage::Import, &sig_fs_read).unwrap();
+        runtime_helpers.insert("caria_fs_read".to_string(), (id_fs_read, sig_fs_read.clone()));
+        runtime_helpers.insert("caria_fs_exists".to_string(), (id_fs_exists, sig_fs_read));
+
+        let mut sig_fs_write = module.make_signature();
+        sig_fs_write.params.push(AbiParam::new(types::I64));
+        sig_fs_write.params.push(AbiParam::new(types::I64));
+        sig_fs_write.returns.push(AbiParam::new(types::I64));
+        let id_fs_write = module.declare_function("caria_fs_write", Linkage::Import, &sig_fs_write).unwrap();
+        runtime_helpers.insert("caria_fs_write".to_string(), (id_fs_write, sig_fs_write));
+
+        let mut sig_redis_get = module.make_signature();
+        sig_redis_get.params.push(AbiParam::new(types::I64));
+        sig_redis_get.returns.push(AbiParam::new(types::I64));
+        let id_redis_get = module.declare_function("caria_redis_get", Linkage::Import, &sig_redis_get).unwrap();
+        let id_env_get = module.declare_function("caria_env_get", Linkage::Import, &sig_redis_get).unwrap();
+        runtime_helpers.insert("caria_redis_get".to_string(), (id_redis_get, sig_redis_get.clone()));
+        runtime_helpers.insert("caria_env_get".to_string(), (id_env_get, sig_redis_get.clone()));
+
+        let mut sig_hash_make = module.make_signature();
+        sig_hash_make.params.push(AbiParam::new(types::I64));
+        sig_hash_make.returns.push(AbiParam::new(types::I64));
+        let id_hash_make = module.declare_function("caria_hash_make", Linkage::Import, &sig_hash_make).unwrap();
+        runtime_helpers.insert("caria_hash_make".to_string(), (id_hash_make, sig_hash_make));
+
+        let mut sig_hash_check = module.make_signature();
+        sig_hash_check.params.push(AbiParam::new(types::I64));
+        sig_hash_check.params.push(AbiParam::new(types::I64));
+        sig_hash_check.returns.push(AbiParam::new(types::I64));
+        let id_hash_check = module.declare_function("caria_hash_check", Linkage::Import, &sig_hash_check).unwrap();
+        runtime_helpers.insert("caria_hash_check".to_string(), (id_hash_check, sig_hash_check));
+
+        let mut sig_log_write = module.make_signature();
+        sig_log_write.params.push(AbiParam::new(types::I64));
+        sig_log_write.params.push(AbiParam::new(types::I64));
+        let id_log_write = module.declare_function("caria_log_write", Linkage::Import, &sig_log_write).unwrap();
+        runtime_helpers.insert("caria_log_write".to_string(), (id_log_write, sig_log_write));
+
+        let mut sig_json_encode = module.make_signature();
+        sig_json_encode.params.push(AbiParam::new(types::I64));
+        sig_json_encode.returns.push(AbiParam::new(types::I64));
+        let id_json_encode = module.declare_function("caria_json_encode", Linkage::Import, &sig_json_encode).unwrap();
+        runtime_helpers.insert("caria_json_encode".to_string(), (id_json_encode, sig_json_encode));
+        let mut sig_redis_set = module.make_signature();
+        sig_redis_set.params.push(AbiParam::new(types::I64));
+        sig_redis_set.params.push(AbiParam::new(types::I64));
+        sig_redis_set.params.push(AbiParam::new(types::I64));
+        sig_redis_set.returns.push(AbiParam::new(types::I64));
+        let id_redis_set = module.declare_function("caria_redis_set", Linkage::Import, &sig_redis_set).unwrap();
+        runtime_helpers.insert("caria_redis_set".to_string(), (id_redis_set, sig_redis_set));
+
+        let mut sig_json_parse = module.make_signature();
+        sig_json_parse.params.push(AbiParam::new(types::I64)); // json_str_ptr
+        sig_json_parse.returns.push(AbiParam::new(types::I64)); // CariaObject/Array ptr
+        let id_json_parse = module.declare_function("caria_json_parse", Linkage::Import, &sig_json_parse).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_json_parse".to_string(), (id_json_parse, sig_json_parse));
+
+        let mut sig_reg = module.make_signature();
+        sig_reg.params.push(AbiParam::new(types::I64));
+        sig_reg.params.push(AbiParam::new(types::I64));
+        sig_reg.params.push(AbiParam::new(types::I64));
+        let id_reg = module.declare_function("caria_register_route", Linkage::Import, &sig_reg).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_register_route".to_string(), (id_reg, sig_reg));
+
+        let mut sig_start = module.make_signature();
+        sig_start.params.push(AbiParam::new(types::I64));
+        let id_start = module.declare_function("caria_start_server", Linkage::Import, &sig_start).map_err(|e| e.to_string())?;
+        runtime_helpers.insert("caria_start_server".to_string(), (id_start, sig_start));
+
 
         Ok(Self {
             module: Some(BackendModule::JIT(module)),
@@ -333,6 +504,7 @@ impl CariaCompiler {
             str_count: 0,
             runtime_helpers,
             routes: Vec::new(),
+            class_registry: ClassRegistry::new(),
         })
     }
 
@@ -541,6 +713,70 @@ impl CariaCompiler {
         let id_verify_argon = module.declare_function("caria_crypto_argon2_verify", Linkage::Import, &sig_verify_argon).map_err(|e| e.to_string())?;
         runtime_helpers.insert("caria_crypto_argon2_verify".to_string(), (id_verify_argon, sig_verify_argon));
 
+        let mut sig_crypto = module.make_signature();
+        sig_crypto.params.push(AbiParam::new(types::I64));
+        sig_crypto.params.push(AbiParam::new(types::I64));
+        sig_crypto.returns.push(AbiParam::new(types::I64));
+        let id_aes_encrypt = module.declare_function("caria_crypto_aes_encrypt", Linkage::Import, &sig_crypto).unwrap();
+        let id_aes_decrypt = module.declare_function("caria_crypto_aes_decrypt", Linkage::Import, &sig_crypto).unwrap();
+        runtime_helpers.insert("caria_crypto_aes_encrypt".to_string(), (id_aes_encrypt, sig_crypto.clone()));
+        runtime_helpers.insert("caria_crypto_aes_decrypt".to_string(), (id_aes_decrypt, sig_crypto));
+
+        let mut sig_fs_read = module.make_signature();
+        sig_fs_read.params.push(AbiParam::new(types::I64));
+        sig_fs_read.returns.push(AbiParam::new(types::I64));
+        let id_fs_read = module.declare_function("caria_fs_read", Linkage::Import, &sig_fs_read).unwrap();
+        let id_fs_exists = module.declare_function("caria_fs_exists", Linkage::Import, &sig_fs_read).unwrap();
+        runtime_helpers.insert("caria_fs_read".to_string(), (id_fs_read, sig_fs_read.clone()));
+        runtime_helpers.insert("caria_fs_exists".to_string(), (id_fs_exists, sig_fs_read));
+
+        let mut sig_fs_write = module.make_signature();
+        sig_fs_write.params.push(AbiParam::new(types::I64));
+        sig_fs_write.params.push(AbiParam::new(types::I64));
+        sig_fs_write.returns.push(AbiParam::new(types::I64));
+        let id_fs_write = module.declare_function("caria_fs_write", Linkage::Import, &sig_fs_write).unwrap();
+        runtime_helpers.insert("caria_fs_write".to_string(), (id_fs_write, sig_fs_write));
+
+        let mut sig_redis_get = module.make_signature();
+        sig_redis_get.params.push(AbiParam::new(types::I64));
+        sig_redis_get.returns.push(AbiParam::new(types::I64));
+        let id_redis_get = module.declare_function("caria_redis_get", Linkage::Import, &sig_redis_get).unwrap();
+        let id_env_get = module.declare_function("caria_env_get", Linkage::Import, &sig_redis_get).unwrap();
+        runtime_helpers.insert("caria_redis_get".to_string(), (id_redis_get, sig_redis_get.clone()));
+        runtime_helpers.insert("caria_env_get".to_string(), (id_env_get, sig_redis_get.clone()));
+
+        let mut sig_hash_make = module.make_signature();
+        sig_hash_make.params.push(AbiParam::new(types::I64));
+        sig_hash_make.returns.push(AbiParam::new(types::I64));
+        let id_hash_make = module.declare_function("caria_hash_make", Linkage::Import, &sig_hash_make).unwrap();
+        runtime_helpers.insert("caria_hash_make".to_string(), (id_hash_make, sig_hash_make));
+
+        let mut sig_hash_check = module.make_signature();
+        sig_hash_check.params.push(AbiParam::new(types::I64));
+        sig_hash_check.params.push(AbiParam::new(types::I64));
+        sig_hash_check.returns.push(AbiParam::new(types::I64));
+        let id_hash_check = module.declare_function("caria_hash_check", Linkage::Import, &sig_hash_check).unwrap();
+        runtime_helpers.insert("caria_hash_check".to_string(), (id_hash_check, sig_hash_check));
+
+        let mut sig_log_write = module.make_signature();
+        sig_log_write.params.push(AbiParam::new(types::I64));
+        sig_log_write.params.push(AbiParam::new(types::I64));
+        let id_log_write = module.declare_function("caria_log_write", Linkage::Import, &sig_log_write).unwrap();
+        runtime_helpers.insert("caria_log_write".to_string(), (id_log_write, sig_log_write));
+
+        let mut sig_json_encode = module.make_signature();
+        sig_json_encode.params.push(AbiParam::new(types::I64));
+        sig_json_encode.returns.push(AbiParam::new(types::I64));
+        let id_json_encode = module.declare_function("caria_json_encode", Linkage::Import, &sig_json_encode).unwrap();
+        runtime_helpers.insert("caria_json_encode".to_string(), (id_json_encode, sig_json_encode));
+        let mut sig_redis_set = module.make_signature();
+        sig_redis_set.params.push(AbiParam::new(types::I64));
+        sig_redis_set.params.push(AbiParam::new(types::I64));
+        sig_redis_set.params.push(AbiParam::new(types::I64));
+        sig_redis_set.returns.push(AbiParam::new(types::I64));
+        let id_redis_set = module.declare_function("caria_redis_set", Linkage::Import, &sig_redis_set).unwrap();
+        runtime_helpers.insert("caria_redis_set".to_string(), (id_redis_set, sig_redis_set));
+
         // JSON FFI
         let mut sig_json_parse = module.make_signature();
         sig_json_parse.params.push(AbiParam::new(types::I64)); // json_str_ptr
@@ -572,6 +808,7 @@ impl CariaCompiler {
             str_count: 0,
             runtime_helpers,
             routes: Vec::new(),
+            class_registry: ClassRegistry::new(),
         })
     }
 
@@ -708,6 +945,42 @@ impl CariaCompiler {
                     let func_id = mod_ref.declare_function(&rune.name, linkage, &sig)?;
                     self.functions.insert(rune.name.clone(), (func_id, sig));
                 }
+                Statement::ModelDecl(model) => {
+                    for method in &model.methods {
+                        let mut sig = mod_ref.make_signature();
+                        
+                        // Add self parameter first (the instance of the model class)
+                        // This ensures proper calling convention: (Blueprint_self) -> Blueprint
+                        sig.params.push(AbiParam::new(types::I64)); // self pointer
+                        
+                        for param in &method.params {
+                            sig.params.push(AbiParam::new(translate_type(&param.type_expr)));
+                        }
+                        if let Some(ref ret) = method.return_type {
+                            sig.returns.push(AbiParam::new(translate_type(ret)));
+                        }
+                        
+                        let mangled = format!("{}_{}", model.name, method.name);
+                        let func_id = mod_ref.declare_function(&mangled, Linkage::Local, &sig)?;
+                        self.functions.insert(mangled.clone(), (func_id, sig.clone()));
+                        
+                        // Register with class registry for type inference
+                        let return_type_str = if let Some(ref ret) = method.return_type {
+                            translate_type(ret).to_string()
+                        } else {
+                            "Void".to_string()
+                        };
+                        
+                        self.class_registry.register_method(
+                            &model.name,
+                            &method.name,
+                            MethodSignature {
+                                self_type: Some(model.name.clone()),
+                                return_type: return_type_str,
+                            },
+                        );
+                    }
+                }
                 Statement::RouteDecl(route) => {
                     let method_str = match route.method {
                         ast::HttpMethod::Get => "GET",
@@ -735,11 +1008,24 @@ impl CariaCompiler {
             }
         }
 
+        // Print function mapping
+        println!("FUNCTION MAPPING:");
+        for (name, (id, _)) in &self.functions {
+            println!("{} -> {}", name, id);
+        }
+        
         // Phase 2: Compile bodies
         for stmt in &flat {
             match stmt {
                 Statement::RuneDecl(rune) => {
                     self.compile_rune(rune)?;
+                }
+                Statement::ModelDecl(model) => {
+                    for method in &model.methods {
+                        let mut m = method.clone();
+                        m.name = format!("{}_{}", model.name, method.name);
+                        self.compile_rune(&m)?;
+                    }
                 }
                 Statement::RouteDecl(route) => {
                     let method_str = match route.method {
@@ -767,6 +1053,7 @@ impl CariaCompiler {
         let &(func_id, ref sig) = self.functions.get(&rune.name).unwrap();
         self.ctx.func.signature = sig.clone();
         self.ctx.func.name = ir::UserFuncName::user(0, func_id.as_u32());
+        println!("DEBUG: Compiling Rune: {} with {} params", rune.name, rune.params.len());
 
         // Pre-extract parameter types to satisfy the borrow checker
         let param_types: Vec<ir::Type> = rune.params.iter().map(|p| translate_type(&p.type_expr)).collect();
@@ -796,6 +1083,7 @@ impl CariaCompiler {
             module: self.module.as_mut().ok_or("Module not initialized")?,
             functions: &self.functions,
             runtime_helpers: &self.runtime_helpers,
+            class_registry: &self.class_registry,
             str_count: &mut self.str_count,
             string_literals: HashMap::new(),
             routes: &self.routes,
@@ -823,11 +1111,6 @@ impl CariaCompiler {
                             let local_ref = helper.module.declare_func_in_func(register_id, &mut helper.builder.func);
                             helper.builder.ins().call(local_ref, &[method_ptr, path_ptr, func_ptr]);
                         }
-                        
-                        let start_id = helper.runtime_helpers.get("caria_start_server").unwrap().0;
-                        let local_ref = helper.module.declare_func_in_func(start_id, &mut helper.builder.func);
-                        let port_val = helper.builder.ins().iconst(types::I64, 8080);
-                        helper.builder.ins().call(local_ref, &[port_val]);
                     }
                 }
 
@@ -856,7 +1139,15 @@ impl CariaCompiler {
 
         helper.builder.finalize();
         let mod_ref = self.module.as_mut().ok_or("Module not initialized")?;
-        mod_ref.define_function(func_id, &mut self.ctx)?;
+        
+        if let Err(errors) = cranelift_codegen::verifier::verify_function(&self.ctx.func, mod_ref.isa()) {
+            println!("VERIFIER ERRORS:\n{}", errors);
+        }
+
+        if let Err(e) = mod_ref.define_function(func_id, &mut self.ctx) {
+            println!("CRANELIFT DEFINE_FUNCTION ERROR:\n{:?}", e);
+            return Err(format!("Compilation error: {}", e));
+        }
         self.ctx.clear();
 
         Ok(())
@@ -884,6 +1175,7 @@ impl CariaCompiler {
             module: self.module.as_mut().ok_or("Module not initialized")?,
             functions: &self.functions,
             runtime_helpers: &self.runtime_helpers,
+            class_registry: &self.class_registry,
             str_count: &mut self.str_count,
             string_literals: HashMap::new(),
             routes: &self.routes,
@@ -902,7 +1194,15 @@ impl CariaCompiler {
 
         helper.builder.finalize();
         let mod_ref = self.module.as_mut().ok_or("Module not initialized")?;
-        mod_ref.define_function(func_id, &mut self.ctx)?;
+        
+        if let Err(errors) = cranelift_codegen::verifier::verify_function(&self.ctx.func, mod_ref.isa()) {
+            println!("VERIFIER ERRORS:\n{}", errors);
+        }
+
+        if let Err(e) = mod_ref.define_function(func_id, &mut self.ctx) {
+            println!("CRANELIFT DEFINE_FUNCTION ERROR:\n{:?}", e);
+            return Err(format!("Compilation error: {}", e));
+        }
         self.ctx.clear();
 
         Ok(())
@@ -919,37 +1219,96 @@ struct FunctionEmitter<'a> {
     module: &'a mut BackendModule,
     functions: &'a HashMap<String, (FuncId, Signature)>,
     runtime_helpers: &'a HashMap<String, (FuncId, Signature)>,
+    class_registry: &'a ClassRegistry,
     str_count: &'a mut usize,
     string_literals: HashMap<String, DataId>,
     routes: &'a [RouteRegistration],
 }
 
 impl<'a> FunctionEmitter<'a> {
-    fn infer_type(&self, expr: &Expression) -> &'static str {
+    fn infer_type(&self, expr: &Expression) -> String {
         match expr {
-            Expression::Literal(Literal::Str(_)) => "Str",
-            Expression::Literal(Literal::Int(_)) => "Int",
-            Expression::Literal(Literal::Bool(_)) => "Bool",
-            Expression::EnvExpr(_) => "Str",
+            Expression::Literal(Literal::Str(_)) => "Str".to_string(),
+            Expression::Literal(Literal::Int(_)) => "Int".to_string(),
+            Expression::Literal(Literal::Bool(_)) => "Bool".to_string(),
+            Expression::EnvExpr(_) => "Str".to_string(),
             Expression::Identifier(name) => {
                 if let Some(t) = self.variable_types.get(name) {
-                    if t == "Str" {
-                        return "Str";
-                    }
+                    return t.clone();
                 }
-                "Any"
+                "Any".to_string()
             }
             Expression::BinaryExpr { left, .. } => {
                 self.infer_type(left)
             }
-            Expression::CallExpr { callee, .. } => {
+            Expression::CallExpr { callee, args: _ } => {
                 if let Expression::Identifier(name) = &**callee {
                     if name == "view" || name == "arg" || name == "caria_arg_get" {
-                        return "Str";
+                        return "Str".to_string();
+                    }
+                } else if let Expression::MemberAccess { object, member, is_safe } = &**callee {
+                    // Handle safe member access (?.) - treat as nullable/optional
+                    if *is_safe {
+                        // Safe navigation returns same type but could be null
+                        return self.infer_type_member_access(object, member);
+                    }
+                    
+                    // Regular member access with proper type lookup
+                    return self.infer_type_member_access(object, member);
+                }
+                "Any".to_string()
+            }
+            Expression::StructInst { name, .. } => name.clone(),
+            _ => "Any".to_string(),
+        }
+    }
+    
+    /// Infer type from member access expressions by looking up mangled function names
+    /// Uses the class registry for accurate return type inference
+    fn infer_type_member_access(&self, object: &Box<Expression>, member: &str) -> String {
+        // Get the inferred type of the object first
+        let object_type = self.infer_type(object);
+        
+        // Try ClassRegistry lookup first - this is the most reliable source
+        if object_type != "Any" && object_type != "Str" && object_type != "Int" && object_type != "Bool" {
+            if let Some(signature) = self.class_registry.get_method_signature(&object_type, member) {
+                // Use the registered return type from the class registry
+                return signature.return_type.clone();
+            }
+        }
+        
+        // Fallback: Check if object identifier directly exists and try registry
+        if let Expression::Identifier(obj_name) = &**object {
+            if let Some(signature) = self.class_registry.get_method_signature(obj_name, member) {
+                return signature.return_type.clone();
+            }
+        }
+        
+        // Last resort: Look up in functions map using mangled name
+        if object_type != "Any" && object_type != "Str" && object_type != "Int" && object_type != "Bool" {
+            let mangled_name = format!("{}_{}", object_type, member);
+            if let Some((_func_id, ref sig)) = self.functions.get(&mangled_name) {
+                if !sig.returns.is_empty() {
+                    let ret_type = sig.returns[0].value_type;
+                    let result_type = self.cranelift_type_to_caria(ret_type);
+                    if result_type != "Any" {
+                        return result_type.to_string();
                     }
                 }
-                "Any"
             }
+        }
+        
+        // Ultimate fallback
+        "Any".to_string()
+    }
+    
+    /// Convert Cranelift IR type to Caria source type string
+    fn cranelift_type_to_caria(&self, ty: IrType) -> &'static str {
+        match ty {
+            types::I64 => "Int",
+            types::I8 => "Bool",  // Booleans are represented as i8 flags
+            types::I32 | types::I16 | types::I128 => "Int",
+            types::F32 | types::F64 => "Float",  // Not commonly used in Caria
             _ => "Any",
         }
     }
@@ -1138,6 +1497,10 @@ impl<'a> FunctionEmitter<'a> {
                         let flags = self.builder.ins().icmp(ir::condcodes::IntCC::Equal, lhs, rhs);
                         Ok(flags)
                     }
+                    BinaryOp::NotEq => {
+                        let flags = self.builder.ins().icmp(ir::condcodes::IntCC::NotEqual, lhs, rhs);
+                        Ok(flags)
+                    }
                     BinaryOp::Less => {
                         let flags = self.builder.ins().icmp(ir::condcodes::IntCC::SignedLessThan, lhs, rhs);
                         Ok(flags)
@@ -1191,6 +1554,66 @@ impl<'a> FunctionEmitter<'a> {
                         }
                     } else {
                         Err(format!("Undefined function call: {}", name))
+                    }
+                } else if let Expression::MemberAccess { object, member, .. } = &**callee {
+                    let inferred_model = self.infer_type(object);
+                    let mut possible_model_names = Vec::new();
+                    if let Expression::Identifier(name) = &**object {
+                        possible_model_names.push(name.clone());
+                    }
+                    if inferred_model != "Any" && inferred_model != "Str" && inferred_model != "Int" && inferred_model != "Bool" {
+                        possible_model_names.push(inferred_model);
+                    }
+                    
+                    let mut found_func = None;
+                    for model_name in possible_model_names {
+                        let mangled = format!("{}_{}", model_name, member);
+                        if let Some(&(func_id, ref sig)) = self.functions.get(&mangled) {
+                            found_func = Some((func_id, sig.clone()));
+                            break;
+                        }
+                    }
+                    
+                    if let Some((func_id, sig)) = found_func {
+                        let mut compiled_args = Vec::new();
+                        for arg in args {
+                            compiled_args.push(self.compile_expr(arg)?);
+                        }
+                        
+                        // If signature expects more arguments than provided, it must be an instance method needing `self`
+                        if sig.params.len() > args.len() {
+                            let self_val = self.compile_expr(object)?;
+                            compiled_args.insert(0, self_val);
+                        }
+
+                        let local_ref = self.module.declare_func_in_func(func_id, &mut self.builder.func);
+                        let inst = self.builder.ins().call(local_ref, &compiled_args);
+                        if !sig.returns.is_empty() {
+                            return Ok(self.builder.inst_results(inst)[0]);
+                        } else {
+                            return Ok(self.builder.ins().iconst(types::I64, 0));
+                        }
+                    }
+                    // Fallback to dynamic func ptr if not a known model method
+                    let func_ptr = self.compile_expr(callee)?;
+                    let mut compiled_args = Vec::new();
+                    for arg in args {
+                        compiled_args.push(self.compile_expr(arg)?);
+                    }
+                    
+                    let mut sig = self.module.make_signature();
+                    for _ in args {
+                        sig.params.push(AbiParam::new(types::I64));
+                    }
+                    sig.returns.push(AbiParam::new(types::I64));
+                    
+                    let sig_ref = self.builder.import_signature(sig);
+                    let inst = self.builder.ins().call_indirect(sig_ref, func_ptr, &compiled_args);
+                    
+                    if !self.builder.inst_results(inst).is_empty() {
+                        return Ok(self.builder.inst_results(inst)[0]);
+                    } else {
+                        return Ok(self.builder.ins().iconst(types::I64, 0));
                     }
                 } else {
                     // Dynamic function pointer call

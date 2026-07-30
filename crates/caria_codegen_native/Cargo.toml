@@ -15,6 +15,7 @@ cranelift-native = "0.106"
 caria_ir = { path = "../caria_ir" }
 caria_parser = { path = "../caria_parser" }
 caria_lexer = { path = "../caria_lexer" }
+caria_runtime = { path = "../caria_runtime" }
 tiny_http = "0.12"
 once_cell = "1.18"
 serde_json = "1.0"

@@ -113,15 +113,27 @@ impl<'a> Parser<'a> {
             Some((Ok(Token::ResourceRoute), _)) => self.parse_resource_route(),
 
             // Modules & Code Organization
-            Some((Ok(Token::Include), _)) => {
-                self.lexer.next(); // consume include
-                let path = match self.lexer.next() {
-                    Some((Ok(Token::Str(p)), _)) => p,
-                    Some((Err(_), span)) => return Err(ParseError::UnexpectedToken(format!("Lexer error at {}..{}", span.start, span.end))),
-                    Some((tok, _)) => return Err(ParseError::UnexpectedToken(format!("Expected path string after include, found {:?}", tok))),
-                    None => return Err(ParseError::UnexpectedEOF("Expected path string after include".into())),
-                };
-                Ok(ast::Statement::Include(path))
+            Some((Ok(Token::Summon), _)) => {
+                self.lexer.next(); // consume summon
+                
+                let mut path = String::new();
+                loop {
+                    match self.lexer.next() {
+                        Some((Ok(Token::Ident(p)), _)) => path.push_str(&p),
+                        Some((Err(_), span)) => return Err(ParseError::UnexpectedToken(format!("Lexer error at {}..{}", span.start, span.end))),
+                        Some((tok, _)) => return Err(ParseError::UnexpectedToken(format!("Expected identifier in summon path, found {:?}", tok))),
+                        None => return Err(ParseError::UnexpectedEOF("Expected identifier in summon path".into())),
+                    }
+                    
+                    if let Some((Ok(Token::Dot), _)) = self.lexer.peek() {
+                        self.lexer.next(); // consume dot
+                        path.push('.');
+                    } else {
+                        break;
+                    }
+                }
+                
+                Ok(ast::Statement::Summon(path))
             }
 
             // Model / ORM
@@ -857,16 +869,26 @@ impl<'a> Parser<'a> {
         while let Some((Ok(token), _)) = self.lexer.peek() {
             if token == &Token::RBrace { break; }
 
-            let is_static = if let Token::Ident(id) = token { id == "static" } else { false };
+            let is_static = if let Token::Ident(id) = token { id.as_str() == "static" } else { false };
             let is_rune = token == &Token::Rune;
+            println!("DEBUG: parsing model member, token: {:?}, is_static: {}, is_rune: {}", token, is_static, is_rune);
 
             if is_rune || is_static {
                 let mut is_public = false; 
                 if is_static {
                     self.lexer.next();
-                    // Do not consume Rune here, parse_rune_decl expects it!
                 }
-                let rune_decl = self.parse_rune_decl(None)?;
+                let mut rune_decl = self.parse_rune_decl(None)?;
+                
+                if !is_static {
+                    rune_decl.params.insert(0, ast::RuneParam {
+                        name: "self".to_string(),
+                        type_expr: ast::TypeExpr::Named(name.clone()),
+                        default_value: None,
+                        is_variadic: false,
+                    });
+                }
+                
                 methods.push(rune_decl);
                 continue;
             }
@@ -1551,6 +1573,16 @@ impl<'a> Parser<'a> {
                 })
             }
 
+            // self / this keywords
+            Some((Ok(Token::SelfKeyword), _)) => {
+                self.lexer.next();
+                Ok(ast::Expression::Identifier("self".to_string()))
+            }
+            Some((Ok(Token::ThisKeyword), _)) => {
+                self.lexer.next();
+                Ok(ast::Expression::Identifier("this".to_string()))
+            }
+
             // Identifier → may be function call
             Some((Ok(Token::Ident(_)), _)) => {
                 let name = match self.lexer.next() {
@@ -1824,6 +1856,20 @@ mod tests {
                 assert!(f.step.is_some());
             }
             _ => panic!("Expected ForRangeStmt"),
+        }
+    }
+
+    #[test]
+    fn test_parse_summon() {
+        let lexer = CariaLexer::new("summon App.Models.User");
+        let mut parser = Parser::new(lexer);
+        let prog = parser.parse_program().unwrap();
+
+        match &prog.statements[0] {
+            ast::Statement::Summon(path) => {
+                assert_eq!(path, "App.Models.User");
+            }
+            _ => panic!("Expected Summon statement"),
         }
     }
 

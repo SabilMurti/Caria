@@ -1,14 +1,14 @@
 use caria_lexer::CariaLexer;
 use caria_parser::Parser;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use ariadne::{Report, ReportKind, Label, Source, Color};
 
 // ---------------------------------------------------------------------------
 // calesteria.toml config
 // ---------------------------------------------------------------------------
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default)]
 struct CariaConfig {
@@ -17,6 +17,7 @@ struct CariaConfig {
     mode: String,      // "script" | "server"
     port: Option<u16>,
     scripts: HashMap<String, String>,
+    autoload: HashMap<String, String>,
 }
 
 fn parse_config(path: &str) -> CariaConfig {
@@ -37,7 +38,15 @@ fn parse_config(path: &str) -> CariaConfig {
                             }
                         }
                     }
-                    return CariaConfig { name, entry, mode, port, scripts };
+                    let mut autoload = HashMap::new();
+                    if let Some(a_obj) = v.get("autoload").and_then(|a| a.as_object()) {
+                        for (k, val) in a_obj {
+                            if let Some(val_str) = val.as_str() {
+                                autoload.insert(k.clone(), val_str.to_string());
+                            }
+                        }
+                    }
+                    return CariaConfig { name, entry, mode, port, scripts, autoload };
                 }
             }
         }
@@ -55,30 +64,52 @@ fn parse_config(path: &str) -> CariaConfig {
 // ---------------------------------------------------------------------------
 use caria_parser::ast::{Statement, Expression, Literal};
 
-fn resolve_includes_in_statements(statements: &mut Vec<Statement>, current_dir: &Path) -> Result<(), String> {
+fn resolve_imports(statements: &mut Vec<Statement>, current_dir: &Path, config: &CariaConfig, project_root: &Path, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
     let mut resolved_stmts = Vec::new();
     for stmt in statements.drain(..) {
         match stmt {
-            Statement::Include(ref rel_path) => {
-                let resolved_path = current_dir.join(rel_path);
-                if !resolved_path.exists() {
-                    return Err(format!("Included file does not exist: {:?}", resolved_path));
+            Statement::Summon(ref namespace_path) => {
+                let parts: Vec<&str> = namespace_path.split('.').collect();
+                let mut resolved_path = None;
+                
+                if let Some(first_part) = parts.first() {
+                    if let Some(mapped_dir) = config.autoload.get(*first_part) {
+                        let rest = parts[1..].join("/");
+                        resolved_path = Some(project_root.join(mapped_dir).join(format!("{}.cria", rest)));
+                    }
                 }
+                
+                let resolved_path = resolved_path.unwrap_or_else(|| {
+                    current_dir.join(format!("{}.cria", namespace_path.replace('.', "/")))
+                });
+
+                if !resolved_path.exists() {
+                    return Err(format!("Summoned module does not exist: {:?}", resolved_path));
+                }
+                
+                // Deduplicate imports
+                let canonical_path = resolved_path.canonicalize().unwrap_or(resolved_path.clone());
+                if visited.contains(&canonical_path) {
+                    continue;
+                }
+                visited.insert(canonical_path.clone());
+
                 let content = fs::read_to_string(&resolved_path)
-                    .map_err(|e| format!("Failed to read included file {:?}: {}", resolved_path, e))?;
+                    .map_err(|e| format!("Failed to read summoned module {:?}: {}", resolved_path, e))?;
                 
                 let lexer = CariaLexer::new(&content);
                 let mut parser = Parser::new(lexer);
                 let mut sub_program = parser.parse_program()
-                    .map_err(|e| format!("Failed to parse included file {:?}: {:?}", resolved_path, e))?;
+                    .map_err(|e| format!("Failed to parse summoned module {:?}: {:?}", resolved_path, e))?;
                 
                 let sub_dir = resolved_path.parent().unwrap_or(Path::new("."));
-                resolve_includes_in_statements(&mut sub_program.statements, sub_dir)?;
+                resolve_imports(&mut sub_program.statements, sub_dir, config, project_root, visited)?;
                 
                 resolved_stmts.extend(sub_program.statements);
             }
+
             mut other => {
-                resolve_includes_in_statement(&mut other, current_dir)?;
+                resolve_imports_in_statement(&mut other, current_dir, config, project_root, visited)?;
                 resolved_stmts.push(other);
             }
         }
@@ -87,173 +118,173 @@ fn resolve_includes_in_statements(statements: &mut Vec<Statement>, current_dir: 
     Ok(())
 }
 
-fn resolve_includes_in_statement(stmt: &mut Statement, current_dir: &Path) -> Result<(), String> {
+fn resolve_imports_in_statement(stmt: &mut Statement, current_dir: &Path, config: &CariaConfig, project_root: &Path, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
     match stmt {
         Statement::RuneDecl(rune) => {
             match &mut rune.body {
                 caria_parser::ast::RuneBody::Block(ref mut stmts) => {
-                    resolve_includes_in_statements(stmts, current_dir)?;
+                    resolve_imports(stmts, current_dir, config, project_root, visited)?;
                 }
                 caria_parser::ast::RuneBody::Inline(ref mut expr) => {
-                    resolve_includes_in_expr(expr, current_dir)?;
+                    resolve_imports_in_expr(expr, current_dir, config, project_root, visited)?;
                 }
             }
         }
         Statement::IfStmt(if_expr) => {
-            resolve_includes_in_expr(&mut if_expr.condition, current_dir)?;
-            resolve_includes_in_statements(&mut if_expr.consequence, current_dir)?;
+            resolve_imports_in_expr(&mut if_expr.condition, current_dir, config, project_root, visited)?;
+            resolve_imports(&mut if_expr.consequence, current_dir, config, project_root, visited)?;
             if let Some(ref mut alt) = if_expr.alternative {
-                resolve_includes_in_statements(alt, current_dir)?;
+                resolve_imports(alt, current_dir, config, project_root, visited)?;
             }
         }
         Statement::UnlessStmt(unless_stmt) => {
-            resolve_includes_in_expr(&mut unless_stmt.condition, current_dir)?;
-            resolve_includes_in_statements(&mut unless_stmt.body, current_dir)?;
+            resolve_imports_in_expr(&mut unless_stmt.condition, current_dir, config, project_root, visited)?;
+            resolve_imports(&mut unless_stmt.body, current_dir, config, project_root, visited)?;
         }
         Statement::GuardStmt(guard_stmt) => {
-            resolve_includes_in_expr(&mut guard_stmt.condition, current_dir)?;
-            resolve_includes_in_statements(&mut guard_stmt.fallback, current_dir)?;
+            resolve_imports_in_expr(&mut guard_stmt.condition, current_dir, config, project_root, visited)?;
+            resolve_imports(&mut guard_stmt.fallback, current_dir, config, project_root, visited)?;
         }
         Statement::WhileStmt(while_stmt) => {
-            resolve_includes_in_expr(&mut while_stmt.condition, current_dir)?;
-            resolve_includes_in_statements(&mut while_stmt.body, current_dir)?;
+            resolve_imports_in_expr(&mut while_stmt.condition, current_dir, config, project_root, visited)?;
+            resolve_imports(&mut while_stmt.body, current_dir, config, project_root, visited)?;
         }
         Statement::ForRangeStmt(for_range) => {
-            resolve_includes_in_expr(&mut for_range.start, current_dir)?;
-            resolve_includes_in_expr(&mut for_range.end, current_dir)?;
+            resolve_imports_in_expr(&mut for_range.start, current_dir, config, project_root, visited)?;
+            resolve_imports_in_expr(&mut for_range.end, current_dir, config, project_root, visited)?;
             if let Some(ref mut step) = for_range.step {
-                resolve_includes_in_expr(step, current_dir)?;
+                resolve_imports_in_expr(step, current_dir, config, project_root, visited)?;
             }
-            resolve_includes_in_statements(&mut for_range.body, current_dir)?;
+            resolve_imports(&mut for_range.body, current_dir, config, project_root, visited)?;
         }
         Statement::ForInStmt(for_in) => {
-            resolve_includes_in_expr(&mut for_in.collection, current_dir)?;
-            resolve_includes_in_statements(&mut for_in.body, current_dir)?;
+            resolve_imports_in_expr(&mut for_in.collection, current_dir, config, project_root, visited)?;
+            resolve_imports(&mut for_in.body, current_dir, config, project_root, visited)?;
         }
         Statement::RouteDecl(route) => {
-            resolve_includes_in_statements(&mut route.body, current_dir)?;
+            resolve_imports(&mut route.body, current_dir, config, project_root, visited)?;
         }
         Statement::RouteGroup(group) => {
-            resolve_includes_in_statements(&mut group.body, current_dir)?;
+            resolve_imports(&mut group.body, current_dir, config, project_root, visited)?;
         }
         Statement::ParallelBlock(p) => {
-            resolve_includes_in_statements(&mut p.body, current_dir)?;
+            resolve_imports(&mut p.body, current_dir, config, project_root, visited)?;
         }
         Statement::RetryBlock(r) => {
-            resolve_includes_in_expr(&mut r.count, current_dir)?;
+            resolve_imports_in_expr(&mut r.count, current_dir, config, project_root, visited)?;
             if let Some(ref mut t) = r.timeout_secs {
-                resolve_includes_in_expr(t, current_dir)?;
+                resolve_imports_in_expr(t, current_dir, config, project_root, visited)?;
             }
-            resolve_includes_in_statements(&mut r.body, current_dir)?;
+            resolve_imports(&mut r.body, current_dir, config, project_root, visited)?;
         }
         Statement::ValidateBlock(v) => {
-            resolve_includes_in_expr(&mut v.target, current_dir)?;
+            resolve_imports_in_expr(&mut v.target, current_dir, config, project_root, visited)?;
         }
         Statement::TransactionBlock(t) => {
-            resolve_includes_in_statements(&mut t.body, current_dir)?;
+            resolve_imports(&mut t.body, current_dir, config, project_root, visited)?;
         }
         Statement::StreamDecl(s) => {
-            resolve_includes_in_statements(&mut s.body, current_dir)?;
+            resolve_imports(&mut s.body, current_dir, config, project_root, visited)?;
         }
         Statement::TestDecl(t) => {
-            resolve_includes_in_statements(&mut t.body, current_dir)?;
+            resolve_imports(&mut t.body, current_dir, config, project_root, visited)?;
         }
         Statement::ExprStmt(expr) => {
-            resolve_includes_in_expr(expr, current_dir)?;
+            resolve_imports_in_expr(expr, current_dir, config, project_root, visited)?;
         }
         Statement::RetStmt(expr) => {
-            resolve_includes_in_expr(expr, current_dir)?;
+            resolve_imports_in_expr(expr, current_dir, config, project_root, visited)?;
         }
         Statement::SayStmt(expr) => {
-            resolve_includes_in_expr(expr, current_dir)?;
+            resolve_imports_in_expr(expr, current_dir, config, project_root, visited)?;
         }
         Statement::ConstDecl(decl) => {
-            resolve_includes_in_expr(&mut decl.value, current_dir)?;
+            resolve_imports_in_expr(&mut decl.value, current_dir, config, project_root, visited)?;
         }
         Statement::MutDecl(decl) => {
-            resolve_includes_in_expr(&mut decl.value, current_dir)?;
+            resolve_imports_in_expr(&mut decl.value, current_dir, config, project_root, visited)?;
         }
         Statement::AssignStmt(assign) => {
-            resolve_includes_in_expr(&mut assign.value, current_dir)?;
+            resolve_imports_in_expr(&mut assign.value, current_dir, config, project_root, visited)?;
         }
         _ => {}
     }
     Ok(())
 }
 
-fn resolve_includes_in_expr(expr: &mut Expression, current_dir: &Path) -> Result<(), String> {
+fn resolve_imports_in_expr(expr: &mut Expression, current_dir: &Path, config: &CariaConfig, project_root: &Path, visited: &mut HashSet<PathBuf>) -> Result<(), String> {
     match expr {
         Expression::CallExpr { callee, args } => {
-            resolve_includes_in_expr(callee, current_dir)?;
+            resolve_imports_in_expr(callee, current_dir, config, project_root, visited)?;
             for arg in args {
-                resolve_includes_in_expr(arg, current_dir)?;
+                resolve_imports_in_expr(arg, current_dir, config, project_root, visited)?;
             }
         }
         Expression::MemberAccess { object, .. } => {
-            resolve_includes_in_expr(object, current_dir)?;
+            resolve_imports_in_expr(object, current_dir, config, project_root, visited)?;
         }
         Expression::IndexExpr { object, index } => {
-            resolve_includes_in_expr(object, current_dir)?;
-            resolve_includes_in_expr(index, current_dir)?;
+            resolve_imports_in_expr(object, current_dir, config, project_root, visited)?;
+            resolve_imports_in_expr(index, current_dir, config, project_root, visited)?;
         }
         Expression::BinaryExpr { left, right, .. } => {
-            resolve_includes_in_expr(left, current_dir)?;
-            resolve_includes_in_expr(right, current_dir)?;
+            resolve_imports_in_expr(left, current_dir, config, project_root, visited)?;
+            resolve_imports_in_expr(right, current_dir, config, project_root, visited)?;
         }
         Expression::UnaryExpr { operand, .. } => {
-            resolve_includes_in_expr(operand, current_dir)?;
+            resolve_imports_in_expr(operand, current_dir, config, project_root, visited)?;
         }
         Expression::PipeExpr { left, right } => {
-            resolve_includes_in_expr(left, current_dir)?;
-            resolve_includes_in_expr(right, current_dir)?;
+            resolve_imports_in_expr(left, current_dir, config, project_root, visited)?;
+            resolve_imports_in_expr(right, current_dir, config, project_root, visited)?;
         }
         Expression::NilAssignExpr { default, .. } => {
-            resolve_includes_in_expr(default, current_dir)?;
+            resolve_imports_in_expr(default, current_dir, config, project_root, visited)?;
         }
         Expression::WhenExpr { subject, arms } => {
-            resolve_includes_in_expr(subject, current_dir)?;
+            resolve_imports_in_expr(subject, current_dir, config, project_root, visited)?;
             for arm in arms {
-                resolve_includes_in_expr(&mut arm.body, current_dir)?;
+                resolve_imports_in_expr(&mut arm.body, current_dir, config, project_root, visited)?;
             }
         }
         Expression::IfExpr(if_expr) => {
-            resolve_includes_in_expr(&mut if_expr.condition, current_dir)?;
-            resolve_includes_in_statements(&mut if_expr.consequence, current_dir)?;
+            resolve_imports_in_expr(&mut if_expr.condition, current_dir, config, project_root, visited)?;
+            resolve_imports(&mut if_expr.consequence, current_dir, config, project_root, visited)?;
             if let Some(ref mut alt) = if_expr.alternative {
-                resolve_includes_in_statements(alt, current_dir)?;
+                resolve_imports(alt, current_dir, config, project_root, visited)?;
             }
         }
         Expression::ClosureExpr { body, .. } => {
-            resolve_includes_in_statements(body, current_dir)?;
+            resolve_imports(body, current_dir, config, project_root, visited)?;
         }
         Expression::ArrayLiteral(exprs) => {
             for e in exprs {
-                resolve_includes_in_expr(e, current_dir)?;
+                resolve_imports_in_expr(e, current_dir, config, project_root, visited)?;
             }
         }
         Expression::MapLiteral(kvs) => {
             for (k, v) in kvs {
-                resolve_includes_in_expr(k, current_dir)?;
-                resolve_includes_in_expr(v, current_dir)?;
+                resolve_imports_in_expr(k, current_dir, config, project_root, visited)?;
+                resolve_imports_in_expr(v, current_dir, config, project_root, visited)?;
             }
         }
         Expression::StructInst { fields, .. } => {
             for (_, v) in fields {
-                resolve_includes_in_expr(v, current_dir)?;
+                resolve_imports_in_expr(v, current_dir, config, project_root, visited)?;
             }
         }
         Expression::ErrorPropagate(inner) => {
-            resolve_includes_in_expr(inner, current_dir)?;
+            resolve_imports_in_expr(inner, current_dir, config, project_root, visited)?;
         }
         Expression::CastExpr { value, default, .. } => {
-            resolve_includes_in_expr(value, current_dir)?;
+            resolve_imports_in_expr(value, current_dir, config, project_root, visited)?;
             if let Some(ref mut d) = default {
-                resolve_includes_in_expr(d, current_dir)?;
+                resolve_imports_in_expr(d, current_dir, config, project_root, visited)?;
             }
         }
         Expression::RangeExpr { start, end } => {
-            resolve_includes_in_expr(start, current_dir)?;
-            resolve_includes_in_expr(end, current_dir)?;
+            resolve_imports_in_expr(start, current_dir, config, project_root, visited)?;
+            resolve_imports_in_expr(end, current_dir, config, project_root, visited)?;
         }
         _ => {}
     }
@@ -317,8 +348,10 @@ fn parse_and_check(file_path: &str, format_json: bool) -> caria_parser::ast::Pro
     };
 
     let base_dir = Path::new(file_path).parent().unwrap_or(Path::new("."));
-    if let Err(e) = resolve_includes_in_statements(&mut program.statements, base_dir) {
-        eprintln!("Include Resolution Error: {}", e);
+    let config = parse_config(file_path);
+    let mut visited = std::collections::HashSet::new();
+    if let Err(e) = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited) {
+        eprintln!("Import Resolution Error: {}", e);
         std::process::exit(1);
     }
 

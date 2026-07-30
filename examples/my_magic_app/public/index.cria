@@ -1,6 +1,0 @@
-// Public Entrypoint for Calesteria Framework Application
-// Routes are defined in routes/web.cria & routes/api.cria
-
-rune main() -> int {
-    ret 0
-}

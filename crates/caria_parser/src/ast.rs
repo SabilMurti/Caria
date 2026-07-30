@@ -8,8 +8,8 @@ pub struct Program {
 // ── Top-level Statements ─────────────────────────────────────────────────────
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-    // Include directive
-    Include(String),        // include "path/file.cria"
+    // Module Loading
+    Summon(String),         // summon App.Models.User
 
     // Function / Rune
     RuneDecl(RuneDecl),

@@ -170,6 +170,11 @@ impl TypeChecker {
                 if let Some(t) = self.env.get(name) {
                     Ok(t.clone())
                 } else {
+                    // If it starts with uppercase, it's likely a Model/Class, don't typo-correct it to a lowercase variable
+                    if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        return Ok((name.clone(), false));
+                    }
+
                     // Typo suggestion via Levenshtein distance
                     let mut closest = None;
                     let mut min_dist = usize::MAX;

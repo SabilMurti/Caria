@@ -1,9 +1,0 @@
-use std.std_internal { now_internal, sleep_internal }
-
-pub fn now() -> Int {
-    ret now_internal()
-}
-
-pub fn sleep(ms: Int) {
-    sleep_internal(ms)
-}
