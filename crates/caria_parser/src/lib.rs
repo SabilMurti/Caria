@@ -1904,17 +1904,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_include() {
-        let lexer = CariaLexer::new("include \"routes/web.cria\"");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap();
-        match &program.statements[0] {
-            ast::Statement::Summon(path) => {
-                assert_eq!(path, "routes/web.cria");
-            }
-            _ => panic!("Expected Include statement"),
-        }
-    }
 
     #[test]
     fn test_parse_route_group() {

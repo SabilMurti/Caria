@@ -156,7 +156,9 @@ fn translate_type(type_expr: &TypeExpr) -> ir::Type {
     match type_expr {
         TypeExpr::Named(name) => match name.as_str() {
             "int" => types::I64,
+            "Bool" => types::I8,
             "flag" => types::I8,
+            "Bool" => types::I8,
             "flag" => types::I8,
             "txt" => types::I64,
             _ => types::I64,

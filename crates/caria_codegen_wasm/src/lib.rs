@@ -236,10 +236,10 @@ impl WasmCodegen {
 
     fn map_type(&self, type_name: &str) -> ValType {
         match type_name {
-            "int" | "int" => ValType::I64,
-            "dec" | "dec" => ValType::F64,
-            "flag" | "flag" => ValType::I32,
-            "txt" | "txt" => ValType::I32,
+            "Int" | "int" => ValType::I64,
+            "Float" | "dec" => ValType::F64,
+            "Bool" | "flag" => ValType::I32,
+            "String" | "txt" => ValType::I32,
             _ => ValType::I64,
         }
     }
