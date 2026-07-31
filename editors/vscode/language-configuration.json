@@ -1,24 +1,133 @@
 {
     "comments": {
-        "lineComment": "//"
+        "lineComment": "//",
+        "blockComment": [
+            "/*",
+            "*/"
+        ]
     },
     "brackets": [
-        ["{", "}"],
-        ["[", "]"],
-        ["(", ")"]
+        [
+            "{",
+            "}"
+        ],
+        [
+            "[",
+            "]"
+        ],
+        [
+            "(",
+            ")"
+        ]
     ],
     "autoClosingPairs": [
-        { "open": "{", "close": "}" },
-        { "open": "[", "close": "]" },
-        { "open": "(", "close": ")" },
-        { "open": "\"", "close": "\"" },
-        { "open": "`", "close": "`" }
+        {
+            "open": "{",
+            "close": "}"
+        },
+        {
+            "open": "[",
+            "close": "]"
+        },
+        {
+            "open": "(",
+            "close": ")"
+        },
+        {
+            "open": "\"",
+            "close": "\"",
+            "notIn": [
+                "string"
+            ]
+        },
+        {
+            "open": "'",
+            "close": "'",
+            "notIn": [
+                "string"
+            ]
+        },
+        {
+            "open": "`",
+            "close": "`"
+        },
+        {
+            "open": "/*",
+            "close": "*/",
+            "notIn": [
+                "string"
+            ]
+        }
     ],
     "surroundingPairs": [
-        ["{", "}"],
-        ["[", "]"],
-        ["(", ")"],
-        ["\"", "\""],
-        ["`", "`"]
-    ]
+        [
+            "{",
+            "}"
+        ],
+        [
+            "[",
+            "]"
+        ],
+        [
+            "(",
+            ")"
+        ],
+        [
+            "\"",
+            "\""
+        ],
+        [
+            "'",
+            "'"
+        ],
+        [
+            "`",
+            "`"
+        ]
+    ],
+    "indentationRules": {
+        "increaseIndentPattern": "\\{[^}\"']*$|\\b(rune|if|else|for|while|when|guard|unless|parallel|defer|transaction|stream|socket|model|style|client|component|times|retry)\\s*[^;]*$|^\\s*(get|post|put|delete|patch|options)\\s+\".*\\{$",
+        "decreaseIndentPattern": "^\\s*\\}|^\\s*\\be(?:lse|nd)\\b|^\\s*\\buntil\\b"
+    },
+    "onEnterRules": [
+        {
+            "beforeText": "\\{$",
+            "action": {
+                "indent": "indent"
+            }
+        },
+        {
+            "beforeText": "\\}$",
+            "action": {
+                "indent": "outdent"
+            }
+        },
+        {
+            "beforeText": "\\{[^}\"']*$",
+            "afterText": "^\\s*\\}",
+            "action": {
+                "indent": "indentOutdent"
+            }
+        },
+        {
+            "beforeText": "^\\s*//",
+            "action": {
+                "indent": "none",
+                "appendText": "// "
+            }
+        },
+        {
+            "beforeText": "\\|>$",
+            "action": {
+                "indent": "indent"
+            }
+        }
+    ],
+    "__electricCharacterSupport": {
+        "docComment": {
+            "scope": "comment.block.documentation.caria",
+            "lineStart": "///",
+            "close": "///"
+        }
+    }
 }

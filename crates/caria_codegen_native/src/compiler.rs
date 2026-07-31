@@ -157,7 +157,7 @@ fn translate_type(type_expr: &TypeExpr) -> ir::Type {
         TypeExpr::Named(name) => match name.as_str() {
             "int" => types::I64,
             "flag" => types::I8,
-            "Bool" => types::I8,
+            "flag" => types::I8,
             "txt" => types::I64,
             _ => types::I64,
         },
@@ -1228,10 +1228,10 @@ struct FunctionEmitter<'a> {
 impl<'a> FunctionEmitter<'a> {
     fn infer_type(&self, expr: &Expression) -> String {
         match expr {
-            Expression::Literal(Literal::Str(_)) => "Str".to_string(),
-            Expression::Literal(Literal::Int(_)) => "Int".to_string(),
-            Expression::Literal(Literal::Bool(_)) => "Bool".to_string(),
-            Expression::EnvExpr(_) => "Str".to_string(),
+            Expression::Literal(Literal::Str(_)) => "txt".to_string(),
+            Expression::Literal(Literal::Int(_)) => "int".to_string(),
+            Expression::Literal(Literal::Bool(_)) => "flag".to_string(),
+            Expression::EnvExpr(_) => "txt".to_string(),
             Expression::Identifier(name) => {
                 if let Some(t) = self.variable_types.get(name) {
                     return t.clone();
@@ -1244,7 +1244,7 @@ impl<'a> FunctionEmitter<'a> {
             Expression::CallExpr { callee, args: _ } => {
                 if let Expression::Identifier(name) = &**callee {
                     if name == "view" || name == "arg" || name == "caria_arg_get" {
-                        return "Str".to_string();
+                        return "txt".to_string();
                     }
                 } else if let Expression::MemberAccess { object, member, is_safe } = &**callee {
                     // Handle safe member access (?.) - treat as nullable/optional
@@ -1270,7 +1270,7 @@ impl<'a> FunctionEmitter<'a> {
         let object_type = self.infer_type(object);
         
         // Try ClassRegistry lookup first - this is the most reliable source
-        if object_type != "Any" && object_type != "Str" && object_type != "Int" && object_type != "Bool" {
+        if object_type != "Any" && object_type != "txt" && object_type != "int" && object_type != "flag" {
             if let Some(signature) = self.class_registry.get_method_signature(&object_type, member) {
                 // Use the registered return type from the class registry
                 return signature.return_type.clone();
@@ -1285,7 +1285,7 @@ impl<'a> FunctionEmitter<'a> {
         }
         
         // Last resort: Look up in functions map using mangled name
-        if object_type != "Any" && object_type != "Str" && object_type != "Int" && object_type != "Bool" {
+        if object_type != "Any" && object_type != "txt" && object_type != "int" && object_type != "flag" {
             let mangled_name = format!("{}_{}", object_type, member);
             if let Some((_func_id, ref sig)) = self.functions.get(&mangled_name) {
                 if !sig.returns.is_empty() {
@@ -1305,10 +1305,10 @@ impl<'a> FunctionEmitter<'a> {
     /// Convert Cranelift IR type to Caria source type string
     fn cranelift_type_to_caria(&self, ty: IrType) -> &'static str {
         match ty {
-            types::I64 => "Int",
-            types::I8 => "Bool",  // Booleans are represented as i8 flags
-            types::I32 | types::I16 | types::I128 => "Int",
-            types::F32 | types::F64 => "Float",  // Not commonly used in Caria
+            types::I64 => "int",
+            types::I8 => "flag",  // Booleans are represented as i8 flags
+            types::I32 | types::I16 | types::I128 => "int",
+            types::F32 | types::F64 => "dec",  // Not commonly used in Caria
             _ => "Any",
         }
     }
@@ -1362,7 +1362,7 @@ impl<'a> FunctionEmitter<'a> {
                 *returned = true;
             }
             Statement::SayStmt(expr) => {
-                let is_str = self.infer_type(expr) == "Str";
+                let is_str = self.infer_type(expr) == "txt";
                 if is_str {
                     let ptr = self.compile_expr(expr)?;
                     let len_val = if let Expression::Literal(Literal::Str(s)) = expr {
@@ -1481,7 +1481,7 @@ impl<'a> FunctionEmitter<'a> {
                     BinaryOp::Add => {
                         let left_type = self.infer_type(left);
                         let right_type = self.infer_type(right);
-                        if left_type == "Str" || right_type == "Str" {
+                        if left_type == "txt" || right_type == "txt" {
                             let helper_id = self.runtime_helpers.get("caria_str_concat").unwrap().0;
                             let local_ref = self.module.declare_func_in_func(helper_id, &mut self.builder.func);
                             let inst = self.builder.ins().call(local_ref, &[lhs, rhs]);
@@ -1561,7 +1561,7 @@ impl<'a> FunctionEmitter<'a> {
                     if let Expression::Identifier(name) = &**object {
                         possible_model_names.push(name.clone());
                     }
-                    if inferred_model != "Any" && inferred_model != "Str" && inferred_model != "Int" && inferred_model != "Bool" {
+                    if inferred_model != "Any" && inferred_model != "txt" && inferred_model != "int" && inferred_model != "flag" {
                         possible_model_names.push(inferred_model);
                     }
                     

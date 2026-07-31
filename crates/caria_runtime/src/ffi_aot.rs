@@ -279,21 +279,21 @@ lazy_static! {
 
 #[no_mangle]
 pub extern "C" fn caria_mysql_connect(url_ptr: *const c_char) -> i64 {
-    println!("NATIVE: caria_mysql_connect called with ptr {:?}", url_ptr);
+    eprintln!("NATIVE: caria_mysql_connect called with ptr {:?}", url_ptr);
     if url_ptr.is_null() { return 0; }
     let url = unsafe { CStr::from_ptr(url_ptr) }.to_str().unwrap_or("");
-    println!("NATIVE: url parsed as {}", url);
+    eprintln!("NATIVE: url parsed as {}", url);
     
     let builder = mysql_async::OptsBuilder::from_opts(mysql_async::Opts::from_url(url).unwrap_or_default());
-    println!("NATIVE: builder created");
+    eprintln!("NATIVE: builder created");
     let pool = Pool::new(builder);
-    println!("NATIVE: pool created");
+    eprintln!("NATIVE: pool created");
     
     // We store the pool in a global map and return its ID (the map length + 1)
     let mut pools = MYSQL_POOLS.lock().unwrap();
     let pool_id = (pools.len() as i64) + 1;
     pools.insert(pool_id, Arc::new(pool));
-    println!("NATIVE: pool stored with id {}", pool_id);
+    eprintln!("NATIVE: pool stored with id {}", pool_id);
     
     pool_id
 }
@@ -614,7 +614,7 @@ pub extern "C" fn caria_hash_check(password_ptr: *const c_char, hash_ptr: *const
 pub extern "C" fn caria_log_write(level_ptr: *const c_char, msg_ptr: *const c_char) -> i64 {
     let level = if level_ptr.is_null() { "INFO" } else { unsafe { CStr::from_ptr(level_ptr) }.to_str().unwrap_or("INFO") };
     let msg = if msg_ptr.is_null() { "" } else { unsafe { CStr::from_ptr(msg_ptr) }.to_str().unwrap_or("") };
-    println!("[{}] {}", level.to_uppercase(), msg);
+    eprintln!("[{}] {}", level.to_uppercase(), msg);
     1
 }
 

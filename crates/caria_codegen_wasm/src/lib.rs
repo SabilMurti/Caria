@@ -28,7 +28,7 @@ pub struct WasmCodegen {
 fn get_type_str(te: &TypeExpr) -> &str {
     match te {
         TypeExpr::Named(s) => s.as_str(),
-        _ => "Int",
+        _ => "int",
     }
 }
 
@@ -236,10 +236,10 @@ impl WasmCodegen {
 
     fn map_type(&self, type_name: &str) -> ValType {
         match type_name {
-            "Int" | "int" => ValType::I64,
-            "Float" | "dec" => ValType::F64,
-            "Bool" | "flag" => ValType::I32,
-            "Str" | "txt" => ValType::I32,
+            "int" | "int" => ValType::I64,
+            "dec" | "dec" => ValType::F64,
+            "flag" | "flag" => ValType::I32,
+            "txt" | "txt" => ValType::I32,
             _ => ValType::I64,
         }
     }
@@ -320,17 +320,17 @@ impl WasmCodegen {
         decl: &RuneDecl,
     ) -> String {
         match expr {
-            Expression::Literal(Literal::Int(_)) => "Int".to_string(),
-            Expression::Literal(Literal::Float(_)) => "Float".to_string(),
-            Expression::Literal(Literal::Bool(_)) => "Bool".to_string(),
-            Expression::Literal(Literal::Str(_)) => "Str".to_string(),
+            Expression::Literal(Literal::Int(_)) => "int".to_string(),
+            Expression::Literal(Literal::Float(_)) => "dec".to_string(),
+            Expression::Literal(Literal::Bool(_)) => "flag".to_string(),
+            Expression::Literal(Literal::Str(_)) => "txt".to_string(),
             Expression::Identifier(name) => {
                 if let Some((_, type_name)) = locals_map.get(name) {
                     type_name.clone()
                 } else if let Some(p) = decl.params.iter().find(|p| &p.name == name) {
                     get_type_str(&p.type_expr).to_string()
                 } else {
-                    "Int".to_string()
+                    "int".to_string()
                 }
             }
             Expression::BinaryExpr { left, .. } => self.infer_expr_type_name(left, locals_map, decl),
@@ -339,15 +339,15 @@ impl WasmCodegen {
                     if let Some(ret_ty) = self.func_return_types.get(name) {
                         ret_ty.clone()
                     } else if name == "dom_get_int" {
-                        "Int".to_string()
+                        "int".to_string()
                     } else {
-                        "Int".to_string()
+                        "int".to_string()
                     }
                 } else {
-                    "Int".to_string()
+                    "int".to_string()
                 }
             }
-            _ => "Int".to_string(),
+            _ => "int".to_string(),
         }
     }
 

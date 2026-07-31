@@ -478,8 +478,12 @@ fn cmd_run_native(file_path: &str, format_json: bool, prog_args: &[String]) {
 // ---------------------------------------------------------------------------
 
 fn cmd_lsp() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     rt.block_on(caria_lsp::run_server());
+    std::process::exit(0);
 }
 
 fn cmd_fmt(file_path: &str) {

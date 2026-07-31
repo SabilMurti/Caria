@@ -123,6 +123,13 @@ impl LanguageServer for Backend {
     }
 
     async fn shutdown(&self) -> Result<()> {
+        // Spawn a task that force-exits the process after the shutdown response
+        // is delivered to the client. This prevents VS Code from timing out
+        // waiting for the server process to die (tower-lsp 0.20 doesn't auto-exit).
+        tokio::spawn(async {
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            std::process::exit(0);
+        });
         Ok(())
     }
 
@@ -216,4 +223,6 @@ pub async fn run_server() {
 
     let (service, socket) = LspService::new(|client| Backend::new(client));
     Server::new(stdin, stdout, socket).serve(service).await;
+    // If serve() somehow returns on its own, also exit cleanly.
+    std::process::exit(0);
 }

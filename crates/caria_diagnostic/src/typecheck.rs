@@ -159,10 +159,10 @@ impl TypeChecker {
 
     fn infer_expression(&mut self, expr: &Expression) -> Result<(String, bool), TypeError> {
         match expr {
-            Expression::Literal(Literal::Int(_)) => Ok(("Int".into(), false)),
-            Expression::Literal(Literal::Float(_)) => Ok(("Float".into(), false)),
-            Expression::Literal(Literal::Str(_)) => Ok(("Str".into(), false)),
-            Expression::Literal(Literal::Bool(_)) => Ok(("Bool".into(), false)),
+            Expression::Literal(Literal::Int(_)) => Ok(("int".into(), false)),
+            Expression::Literal(Literal::Float(_)) => Ok(("dec".into(), false)),
+            Expression::Literal(Literal::Str(_)) => Ok(("txt".into(), false)),
+            Expression::Literal(Literal::Bool(_)) => Ok(("flag".into(), false)),
             Expression::Literal(Literal::Nil) => Ok(("Any".into(), true)),
             Expression::Literal(Literal::Unit(_, _)) => Ok(("Duration".into(), false)),
 
@@ -277,7 +277,7 @@ impl TypeChecker {
             Expression::MapLiteral(_) => Ok(("Map".into(), false)),
             Expression::StructInst { .. } => Ok(("Struct".into(), false)),
             Expression::ErrorPropagate(_) => Ok(("Any".into(), false)),
-            Expression::EnvExpr(_) => Ok(("Str".into(), false)),
+            Expression::EnvExpr(_) => Ok(("txt".into(), false)),
             Expression::NullableCast { target_type, .. } => {
                 let name = match target_type {
                     caria_parser::ast::TypeExpr::Named(n) => n.clone(),

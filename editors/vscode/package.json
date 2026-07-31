@@ -1,43 +1,234 @@
 {
-    "name": "calesteria-vscode",
-    "displayName": "Calesteria Support",
-    "description": "Rich editor support for the Calesteria programming language",
-    "version": "0.1.0",
-    "publisher": "sabil-murti",
+    "name": "caria-vscode",
+    "displayName": "Caria Language Support",
+    "description": "Complete editor support for the Caria programming language - syntax highlighting, auto-completion, snippets, and formatting",
+    "version": "1.0.0",
+    "publisher": "caria-dev",
+    "author": "Caria Ecosystem Team",
+    "license": "MIT",
     "engines": {
-        "vscode": "^1.75.0"
+        "vscode": "^1.85.0"
     },
     "categories": [
-        "Programming Languages"
+        "Programming Languages",
+        "Snippets",
+        "Formatters"
     ],
-    "icon": "icon.png",
+    "keywords": [
+        "caria",
+        "calesteria",
+        ".cria",
+        "language",
+        "syntax",
+        "highlighting",
+        "compilation"
+    ],
+    "icon": "icons/caria-dark.svg",
     "main": "./src/extension.js",
     "activationEvents": [
-        "onLanguage:calesteria"
+        "onLanguage:caria"
     ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/caria-ecosystem/caria-vscode"
+    },
+    "bugs": {
+        "url": "https://github.com/caria-ecosystem/caria-vscode/issues"
+    },
+    "homepage": "https://github.com/caria-ecosystem/caria-vscode/blob/main/README.md",
+    "capabilities": {
+        "untrustedWorkspaces": {
+            "supported": false
+        }
+    },
     "contributes": {
         "languages": [
             {
-                "id": "calesteria",
+                "id": "caria",
                 "aliases": [
-                    "Calesteria",
-                    "calesteria"
+                    "Caria",
+                    "caria"
                 ],
                 "extensions": [
-                    ".caria"
+                    ".cria"
                 ],
-                "configuration": "./language-configuration.json"
+                "filenames": [],
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "light": "icons/caria-light.svg",
+                    "dark": "icons/caria-dark.svg"
+                }
             }
         ],
         "grammars": [
             {
-                "language": "calesteria",
+                "language": "caria",
                 "scopeName": "source.caria",
-                "path": "./syntaxes/calesteria.tmLanguage.json"
+                "path": "./syntaxes/caria.tmLanguage.json",
+                "embeddedLanguages": {
+                    "meta.interpolation.caria": "javascript"
+                }
+            }
+        ],
+        "snippets": [
+            {
+                "language": "caria",
+                "path": "./snippets/caria.json"
+            }
+        ],
+        "commands": [
+            {
+                "command": "caria.compile",
+                "title": "Caria: Compile File",
+                "category": "Caria"
+            },
+            {
+                "command": "caria.run",
+                "title": "Caria: Run File",
+                "category": "Caria"
+            },
+            {
+                "command": "caria.buildProject",
+                "title": "Caria: Build Project",
+                "category": "Caria"
+            },
+            {
+                "command": "caria.test",
+                "title": "Caria: Test File",
+                "category": "Caria"
+            },
+            {
+                "command": "caria.check",
+                "title": "Caria: Type Check",
+                "category": "Caria"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "caria.compile",
+                "key": "ctrl+shift+c",
+                "mac": "cmd+shift+c",
+                "when": "editorTextFocus && editorLangId == caria"
+            },
+            {
+                "command": "caria.run",
+                "key": "ctrl+shift+r",
+                "mac": "cmd+shift+r",
+                "when": "editorTextFocus && editorLangId == caria"
+            },
+            {
+                "command": "caria.test",
+                "key": "ctrl+shift+t",
+                "mac": "cmd+shift+t",
+                "when": "editorTextFocus && editorLangId == caria"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "caria.compile",
+                    "when": "editorLangId == caria",
+                    "group": "modification"
+                },
+                {
+                    "command": "caria.run",
+                    "when": "editorLangId == caria",
+                    "group": "modification"
+                },
+                {
+                    "command": "caria.test",
+                    "when": "editorLangId == caria",
+                    "group": "modification"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "caria.compile",
+                    "when": "editorLangId == caria"
+                },
+                {
+                    "command": "caria.run",
+                    "when": "editorLangId == caria"
+                },
+                {
+                    "command": "caria.buildProject",
+                    "when": "editorLangId == caria"
+                },
+                {
+                    "command": "caria.test",
+                    "when": "editorLangId == caria"
+                },
+                {
+                    "command": "caria.check",
+                    "when": "editorLangId == caria"
+                }
+            ]
+        },
+        "configuration": [
+            {
+                "title": "Caria",
+                "properties": {
+                    "caria.compilerPath": {
+                        "type": "string",
+                        "default": "caria",
+                        "description": "Path to the Caria compiler binary"
+                    },
+                    "caria.enableFormatting": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Enable automatic formatting on save"
+                    },
+                    "caria.formatterTabSize": {
+                        "type": "number",
+                        "default": 4,
+                        "description": "Number of spaces per indentation level"
+                    },
+                    "caria.enableTypeChecking": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Enable inline type checking diagnostics"
+                    }
+                }
+            }
+        ],
+        "jsonValidation": [
+            {
+                "fileMatch": "caria.json",
+                "url": "./schemas/caria-schema.json"
+            }
+        ],
+        "problemMatchers": [
+            {
+                "name": "caria-compile",
+                "label": "Caria Compiler Output",
+                "owner": "caria",
+                "source": "caria",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^([^\\s].*?)(\\s+:\\s+(\\d+)\\s+:\\s+(\\d+))?\\s+:\\s+(error|warning)\\s+:\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
             }
         ]
     },
+    "scripts": {
+        "lint": "eslint src",
+        "pretest": "npm run lint",
+        "test": "node ./src/test/suite/index.js"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.85.0",
+        "@types/node": "^20.11.0",
+        "eslint": "^8.56.0"
+    },
     "dependencies": {
-        "vscode-languageclient": "^8.1.0"
+        "vscode-languageclient": "^9.0.1"
     }
 }
