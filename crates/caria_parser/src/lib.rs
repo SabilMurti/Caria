@@ -1909,7 +1909,7 @@ mod tests {
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program().unwrap();
         match &program.statements[0] {
-            ast::Statement::Include(path) => {
+            ast::Statement::Summon(path) => {
                 assert_eq!(path, "routes/web.cria");
             }
             _ => panic!("Expected Include statement"),
