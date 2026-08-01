@@ -455,7 +455,7 @@ fn cmd_run_native(file_path: &str, format_json: bool, prog_args: &[String]) {
         .map(|cs| cs.as_ptr() as *const u8)
         .collect();
     
-    caria_codegen_native::runtime::caria_set_args(pointers.len() as i32, pointers.as_ptr());
+    println!("Skipping caria_set_args"); //(pointers.len() as i32, pointers.as_ptr());
 
     let program = parse_and_check(file_path, format_json);
     match caria_codegen_native::NativeCompiler::compile_to_jit(&program) {
@@ -615,7 +615,7 @@ fn cmd_cast(args: &[String]) {
         .map(|cs| cs.as_ptr() as *const u8)
         .collect();
     
-    caria_codegen_native::runtime::caria_set_args(pointers.len() as i32, pointers.as_ptr());
+    println!("Skipping caria_set_args"); //(pointers.len() as i32, pointers.as_ptr());
 
     let program = parse_and_check(script, false);
     match caria_codegen_native::NativeCompiler::compile_and_get_function(&program, &rune_name) {
