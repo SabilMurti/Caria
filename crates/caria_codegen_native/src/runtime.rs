@@ -1,10 +1,6 @@
-use std::slice;
-use std::str;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 static USER_ARGS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
