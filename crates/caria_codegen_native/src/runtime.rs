@@ -42,6 +42,7 @@ pub extern "C" fn caria_arg_get(idx: i64) -> *const u8 {
 
 #[no_mangle]
 pub extern "C" fn caria_get_env_int(ptr: *const u8) -> i64 {
+    let _ = dotenvy::dotenv();
     if ptr.is_null() {
         return 0;
     }
@@ -58,6 +59,7 @@ pub extern "C" fn caria_get_env_int(ptr: *const u8) -> i64 {
 
 #[no_mangle]
 pub extern "C" fn caria_get_env_txt(ptr: *const u8) -> *const u8 {
+    let _ = dotenvy::dotenv();
     if ptr.is_null() {
         return std::ptr::null();
     }
@@ -148,3 +150,127 @@ pub extern "C" fn caria_view(view_name_ptr: *const u8) -> *const u8 {
     leaked.as_ptr()
 }
 
+
+// ---------------------------------------------------------
+// Subprocess Execution FFI
+// ---------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_exec_command(binary_ptr: *const u8, args_json_ptr: *const u8) -> *const u8 {
+    if binary_ptr.is_null() {
+        let err = serde_json::json!({"error": "Binary path is null", "exit_code": -1}).to_string();
+        return Box::leak(err.into_boxed_str()).as_ptr();
+    }
+    
+    let binary_c = unsafe { std::ffi::CStr::from_ptr(binary_ptr as *const std::os::raw::c_char) };
+    let binary = match binary_c.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            let err = serde_json::json!({"error": "Invalid binary path encoding", "exit_code": -1}).to_string();
+            return Box::leak(err.into_boxed_str()).as_ptr();
+        }
+    };
+    
+    // Parse args from JSON array
+    let args: Vec<String> = if !args_json_ptr.is_null() {
+        let args_c = unsafe { std::ffi::CStr::from_ptr(args_json_ptr as *const std::os::raw::c_char) };
+        if let Ok(args_str) = args_c.to_str() {
+            serde_json::from_str(args_str).unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+    
+    // Execute command
+    let output = match std::process::Command::new(binary)
+        .args(&args)
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            let err_msg = match e.kind() {
+                std::io::ErrorKind::NotFound => format!("Command not found: {}", binary),
+                std::io::ErrorKind::PermissionDenied => format!("Permission denied: {}", binary),
+                _ => format!("Failed to execute command: {}", e),
+            };
+            let err = serde_json::json!({
+                "error": err_msg,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": -1
+            }).to_string();
+            return Box::leak(err.into_boxed_str()).as_ptr();
+        }
+    };
+    
+    let result = serde_json::json!({
+        "stdout": String::from_utf8_lossy(&output.stdout).to_string(),
+        "stderr": String::from_utf8_lossy(&output.stderr).to_string(),
+        "exit_code": output.status.code().unwrap_or(-1)
+    }).to_string();
+    
+    Box::leak(result.into_boxed_str()).as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn caria_spawn_command(binary_ptr: *const u8, args_json_ptr: *const u8) -> i64 {
+    if binary_ptr.is_null() {
+        return -1;
+    }
+    
+    let binary_c = unsafe { std::ffi::CStr::from_ptr(binary_ptr as *const std::os::raw::c_char) };
+    let binary = match binary_c.to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+    
+    let args: Vec<String> = if !args_json_ptr.is_null() {
+        let args_c = unsafe { std::ffi::CStr::from_ptr(args_json_ptr as *const std::os::raw::c_char) };
+        if let Ok(args_str) = args_c.to_str() {
+            serde_json::from_str(args_str).unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+    
+    match std::process::Command::new(binary)
+        .args(&args)
+        .spawn()
+    {
+        Ok(child) => child.id() as i64,
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_kill_process(pid: i64) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+    
+    #[cfg(unix)]
+    {
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM) == 0
+        }
+    }
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("taskkill")
+            .args(&["/PID", &pid.to_string(), "/F"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    
+    #[cfg(not(any(unix, windows)))]
+    {
+        false
+    }
+}

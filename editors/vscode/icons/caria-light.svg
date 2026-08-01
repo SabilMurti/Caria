@@ -1,0 +1,6 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="256" height="256" rx="64" fill="#F0F0F0"/>
+    <path d="M128 48L208 96V192L128 240L48 192V96L128 48Z" stroke="#0056B3" stroke-width="16" stroke-linejoin="round"/>
+    <path d="M128 96L168 120V168L128 192L88 168V120L128 96Z" fill="#0056B3"/>
+    <text x="128" y="160" font-family="monospace" font-size="64" font-weight="bold" fill="#FFFFFF" text-anchor="middle">C</text>
+</svg>

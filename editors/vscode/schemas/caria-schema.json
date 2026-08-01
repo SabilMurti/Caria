@@ -1,0 +1,69 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Caria Project Manifest",
+    "description": "Configuration file for a Caria project (caria.json)",
+    "type": "object",
+    "required": [
+        "name",
+        "version"
+    ],
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "The name of the project"
+        },
+        "version": {
+            "type": "string",
+            "description": "The version of the project (e.g., 1.0.0)"
+        },
+        "description": {
+            "type": "string",
+            "description": "A brief description of the project"
+        },
+        "authors": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "List of project authors"
+        },
+        "main": {
+            "type": "string",
+            "description": "The entry point file of the project",
+            "default": "src/main.cria"
+        },
+        "dependencies": {
+            "type": "object",
+            "description": "Project dependencies",
+            "additionalProperties": {
+                "type": "string"
+            }
+        },
+        "compilerOptions": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "enum": [
+                        "native",
+                        "wasm",
+                        "js"
+                    ],
+                    "default": "native"
+                },
+                "outDir": {
+                    "type": "string",
+                    "default": "dist"
+                },
+                "strict": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "optimize": {
+                    "type": "boolean",
+                    "default": false
+                }
+            }
+        }
+    }
+}

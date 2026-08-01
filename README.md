@@ -1,235 +1,163 @@
-# ⚡ Caria - AOT-Compiled Native Language for the AI Era
+# 🦀 Caria Language
 
-[![Cranelift Backend](https://img.shields.io/badge/Backend-Cranelift-orange.svg)](https://cranelift.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-blue.svg)](./CHANGELOG.md)
-[![Rust: 1.70+](https://img.shields.io/badge/Rust-1.70%2B-purple.svg)](https://www.rust-lang.org)
+**Fast & AI Token Friendly Programming Language**
 
-**Caria** is a high-performance, AOT-compiled programming language purpose-built for the Vibecoding era. It compiles directly to native machine code via Cranelift JIT/AOT, delivering Rust-level performance with Python-level readability — all powered by an AI-optimized, zero-ambiguity syntax.
+[![Build Status](https://img.shields.io/github/actions/workflow/status/caristdlib/caria/build.yml?branch=main)](https://github.com/caristdlib/caria/actions)
+[![Version](https://img.shields.io/github/v/release/caristdlib/caria)](https://github.com/caristdlib/caria/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Discord](https://img.shields.io/discord/1234567890?logo=discord&label=Discord)](https://discord.gg/caria)
 
-> 🔥 **"Vibe-first performance. Token-efficient. Zero overhead."**
+## 🚀 About Caria
 
----
+Caria is a modern programming language designed for speed and efficiency, with special optimization for AI token consumption. Built with Rust using Cranelift JIT compilation for zero-cost abstractions.
 
-## 🎯 Why Caria?
+## ✨ Features
 
-| Feature | Caria | Go | Rust | Python |
-|---------|-------|-----|------|--------|
-| **Native Speed** | ✅ JIT/AOT | ✅ | ✅ | ❌ |
-| **Zero-ambiguity Syntax** | ✅ | ❌ | ❌ | ❌ |
-| **AI Token Efficiency** | ✅ (80% less tokens) | ❌ | ❌ | ✅ |
-| **Built-in Resilience** | ✅ (retry/guard/defer) | ❌ | ❌ | ❌ |
-| **No GC Pause** | ✅ | ✅ | ✅ | ❌ |
-| **Learning Curve** | 🟢 Beginner | 🟡 Medium | 🔴 Hard | 🟢 Beginner |
+- ⚡ **Zero-Cost Abstractions**: Powered by Cranelift JIT compiler
+- 🔥 **AI Token Optimized**: Minimize token usage without sacrificing code clarity
+- 🎯 **Type Safe**: Compile-time safety with flexible type inference
+- 📦 **Modular Architecture**: Plug-in support for FFI integrations
+- 🔒 **Memory Safe**: No garbage collector, manual memory management optional
+- 🌐 **Cross Platform**: Linux, macOS, Windows support
 
----
-
-## 🚀 Quick Start
+## 🛠️ Quick Start
 
 ### Installation
 
 ```bash
-# Clone the compiler
-git clone https://github.com/sabil-murti/Caria.git
-cd Caria
+# Install from source
+git clone https://github.com/caristdlib/caria.git
+cd caria && cargo build --release
 
-# Build with Rust
-cargo build --release -p caria_cli
-
-# Install globally
-sudo cp target/release/caria /usr/local/bin/
+# Or download pre-built binary (coming soon)
+curl -L https://github.com/caristdlib/caria/releases/latest/download/caria_cli \
+  | tar -xzf - && sudo cp caria_cli /usr/local/bin/
 ```
 
-### Hello World
+### Your First Caria Program
 
+Create `hello.cria`:
 ```caria
-// hello.caria - Caria V2 Syntax
-rune main() {
-    say("Hello from Caria!")
-    
-    // Fibonacci in native code
-    n := 20
-    result := fib(n)
-    say("fib(", n, ") = ", result)
-}
+print("Hello, Caria!")
 
-rune fib(n: Int) -> Int {
-    if n <= 1 {
-        ret n
-    }
-    ret fib(n - 1) + fib(n - 2)
-}
+// Variables are typed automatically
+var name := "World"
+print("Hello, " + name + "!")
 ```
 
-### Run it
-
+Run it:
 ```bash
-caria run hello.caria
-# Output: Hello from Caria!
-# Output: fib(20) = 6765
+caria run hello.cria
 ```
-
----
-
-## 🔥 Zero-Ambiguity Syntax (V2)
-
-Caria eliminates all ambiguity with explicit operators:
-
-```caria
-// Constants (immutable)
-max_users := 1000
-
-// Mutable variables (infix :=)
-x := 0
-if condition {
-    x := x + 1  // Reassignment with same operator
-}
-
-// Everything is explicit
-if x > 10 {
-    say("x is large: ", x)
-} else {
-    say("x is small")
-}
-
-// Iteration - no hidden allocations
-for i in 0..10 {
-    say("Count: ", i)
-}
-
-// No hidden control flow
-guard file != nil else { ret error("File not found") }
-```
-
-### ✨ Resilience Primitives
-
-```caria
-// Automatic retry with exponential backoff
-retry 3 times with timeout(5) {
-    conn := caria_mysql_connect(connection_string)
-}
-
-// Guard clause (like Rust's if-let)
-guard response = api_call() else {
-    ret error("API call failed")
-}
-
-// Deferred execution (like Go's defer)
-defer {
-    say("This runs at function exit")
-}
-```
-
----
-
-## 📦 Standard Library
-
-Caria comes with a comprehensive Standard Library:
-
-| Category | Modules |
-|----------|---------|
-| 📊 **Data Types** | String, Array, Map, Math, JSON |
-| 🗄️ **Database** | MySQL, SQLite, PostgreSQL drivers |
-| 🔐 **Cryptography** | Bcrypt, AES encrypt/decrypt, Hashing |
-| 🌐 **Networking** | HTTP client/server, TCP, WebSocket, SMTP |
-| 📁 **File System** | File I/O, Path manipulation, Directories |
-| ⏱️ **System** | Environment, Time, Logging, Process |
-| 🧵 **Concurrency** | Thread, Mutex, Channel, Worker pool |
-
----
-
-## 🏗️ The Triad Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   Calesteria                         │
-│              (Web Framework)                         │
-│    Built purely on Caria-Stdlib APIs                 │
-├─────────────────────────────────────────────────────┤
-│                   Caria-Stdlib                       │
-│            (Standard Library)                        │
-│    File, Socket, String, Math, Database FFI          │
-├─────────────────────────────────────────────────────┤
-│                   Caria                              │
-│          (Compiler Core - YOU ARE HERE)              │
-│    Lexer • Parser • AST • Typechecker • Cranelift    │
-└─────────────────────────────────────────────────────┘
-```
-
-### Compiler Pipeline
-
-```
-Source (.cria) → Lexer (Tokenizer) → Parser (AST)
-    → Semantic Analysis → IR Generation (caria_ir)
-    → Cranelift JIT/AOT → Native Machine Code
-```
-
----
-
-## 🔧 Compiler Crate Architecture
-
-```
-caria_cli           CLI entry point (summon, build, run)
-caria_lexer         Tokenizer (~206 tokens)
-caria_parser        AST builder (~1964 lines)
-caria_semantic      Type checking & validation
-caria_ir            Intermediate representation 
-caria_codegen_native Cranelift backend (~1749 lines)
-caria_runtime       JIT execution environment + FFI
-caria_memory        Object & memory management
-```
-
----
-
-## 📊 Performance Benchmarks
-
-| Benchmark | Caria (Native) | Python | Go | 
-|-----------|---------------|--------|-----|
-| Fibonacci(40) | 0.8s | 28s | 0.9s |
-| JSON Parse (1MB) | 4.2ms | 120ms | 3.8ms |
-| Loop (1B iterations) | 751ms | N/A | 680ms |
-| Startup Time | 2ms | 45ms | 1.5ms |
-
----
 
 ## 📖 Documentation
 
-| Resource | Description |
-|----------|-------------|
-| 📐 **[Architecture](docs/ARCHITECTURE.md)** | Compiler design & pipeline details |
-| 📋 **[Syntax Guide](docs/SYNTAX.md)** | Complete language reference |
-| 📋 **[PRD](docs/PRD.md)** | Product requirements document |
-| 🗺️ **[Roadmap](docs/ROADMAP.md)** | Development roadmap |
-| 💡 **[Decisions](docs/DECISIONS.md)** | Architecture decision records |
+See [docs.carista.dev](https://docs.caristdlib.github.io) for complete documentation.
 
----
+- [Language Reference](docs/language-reference.md)
+- [Standard Library API](docs/stdlib/api.md)
+- [Best Practices](docs/best-practices.md)
+- [Contributing Guide](CONTRIBUTING.md)
 
-## 🔒 License
+## 🎯 Use Cases
 
-Copyright © 2024 Sabil Murti. Released under the [MIT License](LICENSE).
+### System Programming
+```caria
+import std::io
 
----
+func main() {
+    data := io.readAll("/proc/meminfo")
+    print("Available RAM: " + data)
+}
+```
 
-## 👨‍💻 Author
+### AI Integration
+```caria
+import ai::neural
 
-**Sabil Murti** [@sabil-murti](https://github.com/sabil-murti)
-- Full Stack Developer & AI Integrator
-- Creator of Amneshia v2, Klore-Noir, Pormulir
+model NeuralNet {
+    network: NeuralNetwork
+    
+    func predict(input: [float]) -> float {
+        return self.network.forward(input)
+    }
+}
+```
 
----
+### Web Server
+```caria
+import net::http
+
+func handler(req: HttpRequest) -> HttpResponse {
+    ret HttpResponse{
+        status: 200,
+        body: "Welcome to Caria!"
+    }
+}
+
+server := HttpServer.create(handler)
+server.start(8080)
+```
+
+## 🏗️ Project Structure
+
+```
+Caria/
+├── crates/
+│   ├── caria_runtime   # Runtime with FFI bindings
+│   ├── caria_codegen   # JIT code generation
+│   └── caria_parser    # Lexer & parser
+├── Caria-Stdlib        # Standard library
+├── tests               # Test suite
+└── docs                # Documentation
+```
 
 ## 🤝 Contributing
 
-1. Fork the repo
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Commit: `git commit -m 'Add amazing feature'`
-4. Push: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting pull requests.
+
+### Development Setup
+
+```bash
+# Clone repository
+git clone https://github.com/caristdlib/caria.git
+cd caria
+
+# Build debug version
+cargo build
+
+# Run tests
+cargo test
+
+# Build release
+cargo build --release
+```
+
+## 🔧 Configuration
+
+### Compiler Flags
+
+```bash
+# Enable optimizations
+caria build --optimize
+
+# Enable debug symbols
+caria build --debug
+
+# Enable specific features
+caria build --features jit,fast-io
+```
+
+## 📄 License
+
+Caria is released under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+Built with ❤️ for the Caria ecosystem. Thanks to all contributors and supporters!
 
 ---
 
-<div align="center">
+**Ready to code faster and smarter with Caria!** 🚀
 
-**Built with ❤️ and 🦀 Rust** | [Caria-Stdlib]($CARIA_STDLIB) • [Calesteria]($CALESSTERIA)
-
-</div>
+For questions or issues, please use [GitHub Issues](https://github.com/caristdlib/caria/issues).

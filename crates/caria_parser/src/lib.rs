@@ -120,6 +120,36 @@ impl<'a> Parser<'a> {
                 loop {
                     match self.lexer.next() {
                         Some((Ok(Token::Ident(p)), _)) => path.push_str(&p),
+                        // Keyword tokens are valid module names in summon paths
+                        // (e.g. `summon foundation.env`, `summon http.cache`).
+                        Some((Ok(Token::Env), _)) => path.push_str("env"),
+                        Some((Ok(Token::Cache), _)) => path.push_str("cache"),
+                        Some((Ok(Token::Queue), _)) => path.push_str("queue"),
+                        Some((Ok(Token::View), _)) => path.push_str("view"),
+                        Some((Ok(Token::Model), _)) => path.push_str("model"),
+                        Some((Ok(Token::Stream), _)) => path.push_str("stream"),
+                        Some((Ok(Token::Style), _)) => path.push_str("style"),
+                        Some((Ok(Token::Client), _)) => path.push_str("client"),
+                        Some((Ok(Token::Validate), _)) => path.push_str("validate"),
+                        Some((Ok(Token::Get), _)) => path.push_str("get"),
+                        Some((Ok(Token::Post), _)) => path.push_str("post"),
+                        Some((Ok(Token::Put), _)) => path.push_str("put"),
+                        Some((Ok(Token::Patch), _)) => path.push_str("patch"),
+                        Some((Ok(Token::Delete), _)) => path.push_str("delete"),
+                        Some((Ok(Token::RouteGroup), _)) => path.push_str("route"),
+                        Some((Ok(Token::Only), _)) => path.push_str("only"),
+                        Some((Ok(Token::Except), _)) => path.push_str("except"),
+                        Some((Ok(Token::Transaction), _)) => path.push_str("transaction"),
+                        Some((Ok(Token::Parallel), _)) => path.push_str("parallel"),
+                        Some((Ok(Token::Defer), _)) => path.push_str("defer"),
+                        Some((Ok(Token::Retry), _)) => path.push_str("retry"),
+                        Some((Ok(Token::Timeout), _)) => path.push_str("timeout"),
+                        Some((Ok(Token::Step), _)) => path.push_str("step"),
+                        Some((Ok(Token::Js), _)) => path.push_str("js"),
+                        Some((Ok(Token::Socket), _)) => path.push_str("socket"),
+                        Some((Ok(Token::ResourceRoute), _)) => path.push_str("resource"),
+                        Some((Ok(Token::Times), _)) => path.push_str("times"),
+                        Some((Ok(Token::With), _)) => path.push_str("with"),
                         Some((Err(_), span)) => return Err(ParseError::UnexpectedToken(format!("Lexer error at {}..{}", span.start, span.end))),
                         Some((tok, _)) => return Err(ParseError::UnexpectedToken(format!("Expected identifier in summon path, found {:?}", tok))),
                         None => return Err(ParseError::UnexpectedEOF("Expected identifier in summon path".into())),
@@ -871,7 +901,6 @@ impl<'a> Parser<'a> {
 
             let is_static = if let Token::Ident(id) = token { id.as_str() == "static" } else { false };
             let is_rune = token == &Token::Rune;
-            println!("DEBUG: parsing model member, token: {:?}, is_static: {}, is_rune: {}", token, is_static, is_rune);
 
             if is_rune || is_static {
                 let mut is_public = false; 

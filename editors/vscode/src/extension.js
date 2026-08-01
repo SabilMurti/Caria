@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 const path = require('path');
+const { CariaDocumentFormatter } = require('./formatter');
 
 /** @type {LanguageClient} */
 let client;
@@ -10,6 +11,14 @@ let client;
  */
 function activate(context) {
     console.log('Caria language extension is now active');
+
+    // Register built-in formatter
+    context.subscriptions.push(
+        vscode.languages.registerDocumentFormattingEditProvider(
+            [{ scheme: 'file', language: 'caria' }, { scheme: 'file', language: 'caria-html' }],
+            new CariaDocumentFormatter()
+        )
+    );
 
     const config = vscode.workspace.getConfiguration('caria');
     const compilerPath = config.get('compilerPath') || 'caria';

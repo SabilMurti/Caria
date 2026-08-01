@@ -1,0 +1,216 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Caria HTML View",
+    "scopeName": "text.html.caria-view",
+    "fileTypes": [
+        ".caria"
+    ],
+    "patterns": [
+        {
+            "include": "source.caria"
+        },
+        {
+            "include": "#html"
+        },
+        {
+            "include": "#caria_view"
+        },
+        {
+            "include": "#style_tag"
+        },
+        {
+            "include": "#script_tag"
+        }
+    ],
+    "repository": {
+        "html": {
+            "patterns": [
+                {
+                    "name": "meta.tag.structure.caria-view",
+                    "begin": "(</?)([a-zA-Z_][a-zA-Z0-9_-]*)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.tag.begin.caria"
+                        },
+                        "2": {
+                            "name": "entity.name.tag.caria"
+                        }
+                    },
+                    "end": "(/?>)",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.tag.end.caria"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#tag_attributes"
+                        },
+                        {
+                            "include": "#caria_interpolation"
+                        },
+                        {
+                            "include": "#caria_directive"
+                        }
+                    ]
+                },
+                {
+                    "name": "comment.block.html.caria-view",
+                    "begin": "<!--",
+                    "end": "-->"
+                }
+            ]
+        },
+        "tag_attributes": {
+            "patterns": [
+                {
+                    "name": "entity.other.attribute-name.caria",
+                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_-]*)\\s*(=)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.other.attribute-name.caria"
+                        },
+                        "2": {
+                            "name": "punctuation.definition.attribute.caria"
+                        }
+                    }
+                },
+                {
+                    "name": "string.quoted.double.caria",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.caria",
+                            "match": "\\\\."
+                        },
+                        {
+                            "include": "#caria_interpolation"
+                        }
+                    ]
+                },
+                {
+                    "name": "string.quoted.single.caria",
+                    "begin": "'",
+                    "end": "'",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.caria",
+                            "match": "\\\\."
+                        },
+                        {
+                            "include": "#caria_interpolation"
+                        }
+                    ]
+                }
+            ]
+        },
+        "caria_interpolation": {
+            "patterns": [
+                {
+                    "name": "meta.interpolation.caria",
+                    "begin": "\\{",
+                    "end": "\\}",
+                    "patterns": [
+                        {
+                            "include": "source.caria"
+                        }
+                    ]
+                }
+            ]
+        },
+        "caria_directive": {
+            "patterns": [
+                {
+                    "name": "meta.directive.for.caria",
+                    "match": "\\b(for)\\s*=\\s*\"([a-zA-Z_][a-zA-Z0-9_]*)\\s+(in)\\s+([a-zA-Z_][a-zA-Z0-9_.]*)\"",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.caria"
+                        },
+                        "2": {
+                            "name": "variable.other.caria"
+                        },
+                        "3": {
+                            "name": "keyword.control.caria"
+                        },
+                        "4": {
+                            "name": "variable.other.caria"
+                        }
+                    }
+                },
+                {
+                    "name": "meta.directive.if.caria",
+                    "match": "\\b(if|unless)\\s*=\\s*\"([^\"]*)\"",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.control.caria"
+                        },
+                        "2": {
+                            "name": "variable.other.caria"
+                        }
+                    }
+                }
+            ]
+        },
+        "caria_view": {
+            "patterns": [
+                {
+                    "name": "meta.view.declaration.caria",
+                    "begin": "\\b(view)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\{",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.other.caria"
+                        },
+                        "2": {
+                            "name": "entity.name.function.view.caria"
+                        }
+                    },
+                    "end": "\\}",
+                    "patterns": [
+                        {
+                            "include": "#html"
+                        },
+                        {
+                            "include": "#caria_interpolation"
+                        },
+                        {
+                            "include": "#caria_directive"
+                        },
+                        {
+                            "include": "source.caria"
+                        }
+                    ]
+                }
+            ]
+        },
+        "style_tag": {
+            "patterns": [
+                {
+                    "name": "meta.embedded.block.css.caria",
+                    "begin": "<style[^>]*>",
+                    "end": "</style>",
+                    "patterns": [
+                        {
+                            "include": "text.css"
+                        }
+                    ]
+                }
+            ]
+        },
+        "script_tag": {
+            "patterns": [
+                {
+                    "name": "meta.embedded.block.javascript.caria",
+                    "begin": "<script[^>]*>",
+                    "end": "</script>",
+                    "patterns": [
+                        {
+                            "include": "source.js"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}

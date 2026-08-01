@@ -23,7 +23,8 @@
         "highlighting",
         "compilation"
     ],
-    "icon": "icons/caria-dark.svg",
+    
+    "icon": "icons/caria-icon.png",
     "main": "./src/extension.js",
     "activationEvents": [
         "onLanguage:caria"
@@ -54,10 +55,7 @@
                 ],
                 "filenames": [],
                 "configuration": "./language-configuration.json",
-                "icon": {
-                    "light": "icons/caria-light.svg",
-                    "dark": "icons/caria-dark.svg"
-                }
+                "icon": { "light": "icons/caria-icon.png", "dark": "icons/caria-icon.png" }
             }
         ],
         "grammars": [
