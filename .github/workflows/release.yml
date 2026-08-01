@@ -1,23 +1,19 @@
-name: Caria - Release
+name: Release Caria
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   release:
-    name: Release Caria (${{ matrix.os }})
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: caria_cli-linux-x86_64
-          - os: macos-latest
-            artifact: caria_cli-macos-x86_64
-          - os: windows-latest
-            artifact: caria_cli-windows-x86_64.exe
-    runs-on: ${{ matrix.os }}
+    name: Build & Release Caria (Linux)
+    runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
@@ -28,19 +24,23 @@ jobs:
       - name: Build Release
         run: cargo build --release
       
-      - name: Prepare binary name
-        shell: bash
+      - name: Prepare Artifact
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/release/caria_cli.exe "${{ matrix.artifact }}"
-          else
-            cp target/release/caria_cli "${{ matrix.artifact }}"
-          fi
-      
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
+          mkdir -p dist
+          cp target/release/caria_cli dist/caria
+          
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            ${{ matrix.artifact }}
-          generate_release_notes: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          name: linux-binary
+          path: dist/caria
+          retention-days: 90
+          
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/caria
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
