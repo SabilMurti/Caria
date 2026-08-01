@@ -43,8 +43,8 @@ jobs:
         run: cargo fmt --check
       
       - name: Upload binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: caria_cli-${{ matrix.os }}
           path: target/release/caria_cli
-          retention-days: 7
+          retention-days: 90
