@@ -161,12 +161,6 @@ fn resolve_imports_in_statement(stmt: &mut Statement, current_dir: &Path, config
             resolve_imports_in_expr(&mut for_in.collection, current_dir, config, project_root, visited)?;
             resolve_imports(&mut for_in.body, current_dir, config, project_root, visited)?;
         }
-        Statement::RouteDecl(route) => {
-            resolve_imports(&mut route.body, current_dir, config, project_root, visited)?;
-        }
-        Statement::RouteGroup(group) => {
-            resolve_imports(&mut group.body, current_dir, config, project_root, visited)?;
-        }
         Statement::ParallelBlock(p) => {
             resolve_imports(&mut p.body, current_dir, config, project_root, visited)?;
         }
@@ -176,15 +170,6 @@ fn resolve_imports_in_statement(stmt: &mut Statement, current_dir: &Path, config
                 resolve_imports_in_expr(t, current_dir, config, project_root, visited)?;
             }
             resolve_imports(&mut r.body, current_dir, config, project_root, visited)?;
-        }
-        Statement::ValidateBlock(v) => {
-            resolve_imports_in_expr(&mut v.target, current_dir, config, project_root, visited)?;
-        }
-        Statement::TransactionBlock(t) => {
-            resolve_imports(&mut t.body, current_dir, config, project_root, visited)?;
-        }
-        Statement::StreamDecl(s) => {
-            resolve_imports(&mut s.body, current_dir, config, project_root, visited)?;
         }
         Statement::TestDecl(t) => {
             resolve_imports(&mut t.body, current_dir, config, project_root, visited)?;
@@ -265,11 +250,6 @@ fn resolve_imports_in_expr(expr: &mut Expression, current_dir: &Path, config: &C
         Expression::MapLiteral(kvs) => {
             for (k, v) in kvs {
                 resolve_imports_in_expr(k, current_dir, config, project_root, visited)?;
-                resolve_imports_in_expr(v, current_dir, config, project_root, visited)?;
-            }
-        }
-        Expression::StructInst { fields, .. } => {
-            for (_, v) in fields {
                 resolve_imports_in_expr(v, current_dir, config, project_root, visited)?;
             }
         }
@@ -448,26 +428,36 @@ fn cmd_build_wasm(file_path: &str, format_json: bool) {
 }
 
 fn cmd_run_native(file_path: &str, format_json: bool, prog_args: &[String]) {
-    let c_strings: Vec<std::ffi::CString> = prog_args.iter()
-        .map(|s| std::ffi::CString::new(s.as_str()).unwrap())
-        .collect();
-    let pointers: Vec<*const u8> = c_strings.iter()
-        .map(|cs| cs.as_ptr() as *const u8)
-        .collect();
-    
-    println!("Skipping caria_set_args"); //(pointers.len() as i32, pointers.as_ptr());
-
     let program = parse_and_check(file_path, format_json);
-    match caria_codegen_native::NativeCompiler::compile_to_jit(&program) {
-        Ok(code_ptr) => {
-            let main_func: extern "C" fn() -> i32 = unsafe { std::mem::transmute(code_ptr) };
-            let exit_code = main_func();
-            if exit_code != 0 {
-                std::process::exit(exit_code);
+    
+    // Use AOT compilation to avoid runtime CPU feature detection (fixes SIGILL on Ryzen 5 3400G)
+    let tmp_bin = "/tmp/caria_aot_temp";
+    
+    match caria_codegen_native::NativeCompiler::compile_to_binary(&program, tmp_bin) {
+        Ok(_) => {
+            // Execute the compiled binary with program arguments
+            let mut cmd = std::process::Command::new(tmp_bin);
+            
+            // Forward program arguments
+            for arg in prog_args {
+                cmd.arg(arg);
+            }
+            
+            let status = cmd.status().expect("Failed to execute compiled binary");
+            
+            // Clean up temporary binary
+            let _ = std::fs::remove_file(tmp_bin);
+            
+            // Exit with same code as the compiled program
+            if let Some(code) = status.code() {
+                std::process::exit(code);
+            } else {
+                // Process terminated by signal
+                std::process::exit(1);
             }
         }
         Err(e) => {
-            eprintln!("Execution Error: {}", e);
+            eprintln!("Compilation Error: {}", e);
             std::process::exit(1);
         }
     }
@@ -530,12 +520,6 @@ fn cmd_doc(file_path: &str) {
         match stmt {
             caria_parser::ast::Statement::RuneDecl(d) => {
                 html.push_str(&format!("<h3>rune <code>{}</code></h3>", d.name));
-                if let Some(doc) = &d.doc_comment {
-                    html.push_str(&format!("<p>{}</p>", doc.replace("\n", "<br>")));
-                }
-            }
-            caria_parser::ast::Statement::ModelDecl(d) => {
-                html.push_str(&format!("<h3>model <code>{}</code></h3>", d.name));
                 if let Some(doc) = &d.doc_comment {
                     html.push_str(&format!("<p>{}</p>", doc.replace("\n", "<br>")));
                 }

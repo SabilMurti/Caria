@@ -1,0 +1,60 @@
+// ============================================================================
+// FIBONACCI SEQUENCE GENERATOR
+// ============================================================================
+// Purpose: Demonstrates iterative pattern with state management
+// Use Case: Sequence generation, mathematical computations, iteration patterns
+// Pattern: State rotation using temporary variables
+//
+// AI Agent Usage:
+// - Use this pattern when your agent needs to generate sequences or series
+// - Demonstrates the "three-variable swap" technique for state progression
+// - Useful for any algorithm requiring previous state tracking
+// - Common in: time series, sliding windows, dynamic programming
+//
+// Mathematical Context:
+// Fibonacci: F(n) = F(n-1) + F(n-2), where F(0)=0, F(1)=1
+// Result sequence: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...
+// ============================================================================
+
+rune main() -> int {
+    // Initialize first two Fibonacci numbers
+    // a = F(n), b = F(n+1)
+    a := 0
+    b := 1
+    
+    // Loop counter to control sequence length
+    count := 0
+    limit := 10
+    
+    // Generate sequence iteratively
+    while (count < limit) {
+        // Output current Fibonacci number
+        say(a)
+        
+        // Calculate next number in sequence
+        // This is the core Fibonacci recurrence relation
+        temp := a + b
+        
+        // Rotate state: shift window forward
+        // Previous F(n+1) becomes new F(n)
+        // Previous F(n+2) becomes new F(n+1)
+        a := b
+        b := temp
+        
+        count := count + 1
+    }
+    
+    ret 0
+}
+
+// Output Explanation:
+// Iteration 0: a=0, b=1 → output 0, next temp=1
+// Iteration 1: a=1, b=1 → output 1, next temp=2
+// Iteration 2: a=1, b=2 → output 1, next temp=3
+// Iteration 3: a=2, b=3 → output 2, next temp=5
+// ... and so on
+//
+// Alternative Patterns:
+// 1. Generate until threshold: while (a < 1000)
+// 2. Store sequence in array (when arrays are fully supported)
+// 3. Return nth Fibonacci number instead of printing all

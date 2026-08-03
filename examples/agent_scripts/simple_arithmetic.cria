@@ -1,0 +1,49 @@
+// ============================================================================
+// SIMPLE ARITHMETIC EXAMPLE
+// ============================================================================
+// Purpose: Demonstrates basic arithmetic operations in Caria
+// Use Case: AI agents performing calculations, data transformations
+// Pattern: Sequential variable declarations and operations
+//
+// AI Agent Usage:
+// - Use this pattern when your agent needs to compute numerical results
+// - Variables are mutable by default, use := for declaration
+// - say() outputs results to stdout (currently integers only)
+// - ret 0 indicates successful execution
+// ============================================================================
+
+rune main() -> int {
+    // Variable declarations with initialization
+    // := creates and initializes a variable in one step
+    x := 10
+    y := 5
+    
+    // Arithmetic operations store results in new variables
+    // Addition: useful for aggregating values, counting, accumulation
+    sum := x + y
+    
+    // Subtraction: useful for deltas, decrements, finding differences
+    diff := x - y
+    
+    // Multiplication: useful for scaling, area calculations, repeated addition
+    prod := x * y
+    
+    // Division: integer division (truncates decimal part)
+    // Note: Division by zero will cause runtime error
+    quot := x / y
+    
+    // Output results to stdout
+    say(sum)   // 15
+    say(diff)  // 5
+    say(prod)  // 50
+    say(quot)  // 2
+    
+    // Return 0 to indicate successful execution
+    // Non-zero return values can indicate errors
+    ret 0
+}
+
+// Alternative Patterns:
+// 1. Compound operations: result := (x + y) * (x - y)
+// 2. Reassignment: x := x + 1 (increment)
+// 3. Modulo operator: remainder := x % y (useful for even/odd checks)

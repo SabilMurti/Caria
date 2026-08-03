@@ -1,0 +1,78 @@
+// ============================================================================
+// ACCUMULATOR PATTERN WITH WHILE LOOPS
+// ============================================================================
+// Purpose: Demonstrates aggregation, reduction, and accumulation patterns
+// Use Case: Summing values, calculating statistics, reduce operations
+// Pattern: Initialize accumulator → iterate → update accumulator
+//
+// AI Agent Usage:
+// - Use accumulator pattern when reducing a sequence to a single value
+// - Common in: totals, averages, min/max finding, product calculations
+// - Always initialize accumulator before the loop
+// - Ensure loop condition prevents infinite loops
+//
+// This pattern is the foundation for:
+// - Map-reduce operations
+// - Fold/reduce in functional programming
+// - Database aggregation queries (SUM, COUNT, AVG)
+// ============================================================================
+
+rune main() -> int {
+    // =============================================================
+    // PATTERN 1: Sum of Range (1 to N)
+    // =============================================================
+    // Mathematical Formula: Sum = n(n+1)/2
+    // For n=10: Sum = 10×11/2 = 55
+    // Use Case: Series summation, iterative aggregation
+    
+    sum := 0     // Accumulator: starts at identity element for addition (0)
+    i := 1       // Loop variable: current number in sequence
+    
+    while (i <= 10) {
+        sum := sum + i    // Accumulate: add current value to running total
+        i := i + 1        // Advance: move to next number
+    }
+    
+    say(sum)  // Output: 55
+    
+    // =============================================================
+    // PATTERN 2: Factorial Calculation (N!)
+    // =============================================================
+    // Mathematical Formula: n! = n × (n-1) × (n-2) × ... × 1
+    // For n=5: 5! = 5×4×3×2×1 = 120
+    // Use Case: Combinatorics, permutations, probability
+    
+    factorial := 1    // Accumulator: starts at identity element for multiplication (1)
+    n := 5            // Input: factorial to calculate
+    
+    // Countdown loop: process from n down to 1
+    while (n > 0) {
+        factorial := factorial * n    // Accumulate: multiply current value
+        n := n - 1                    // Advance: countdown to zero
+    }
+    
+    say(factorial)  // Output: 120
+    
+    ret 0
+}
+
+// Key Observations:
+// 1. Accumulator initialization depends on operation:
+//    - Addition/Subtraction: start at 0
+//    - Multiplication/Division: start at 1
+//    - Min finding: start at +infinity (or first element)
+//    - Max finding: start at -infinity (or first element)
+//
+// 2. Loop direction matters:
+//    - Count up: i := i + 1 (common for sum operations)
+//    - Count down: n := n - 1 (common for factorial, optimization)
+//
+// 3. Loop guards prevent edge cases:
+//    - Always check n > 0 before factorial
+//    - Handle empty sequences gracefully
+//
+// Alternative Patterns:
+// 1. For-range loop: for i in 1..11 { sum := sum + i }
+// 2. Conditional accumulation: only sum even numbers
+// 3. Multiple accumulators: track sum AND count simultaneously
+// 4. Accumulator with break: exit early when threshold reached

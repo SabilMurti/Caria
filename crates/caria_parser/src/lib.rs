@@ -103,14 +103,6 @@ impl<'a> Parser<'a> {
             }
             Some((Ok(Token::For), _)) => self.parse_for_stmt(),
 
-            // HTTP Routing
-            Some((Ok(Token::Get), _)) => self.parse_route_decl(ast::HttpMethod::Get),
-            Some((Ok(Token::Post), _)) => self.parse_route_decl(ast::HttpMethod::Post),
-            Some((Ok(Token::Put), _)) => self.parse_route_decl(ast::HttpMethod::Put),
-            Some((Ok(Token::Patch), _)) => self.parse_route_decl(ast::HttpMethod::Patch),
-            Some((Ok(Token::Delete), _)) => self.parse_route_decl(ast::HttpMethod::Delete),
-            Some((Ok(Token::RouteGroup), _)) => self.parse_route_group(),
-            Some((Ok(Token::ResourceRoute), _)) => self.parse_resource_route(),
 
             // Modules & Code Organization
             Some((Ok(Token::Summon), _)) => {
@@ -124,33 +116,23 @@ impl<'a> Parser<'a> {
                         // (e.g. `summon foundation.env`, `summon http.cache`).
                         Some((Ok(Token::Env), _)) => path.push_str("env"),
                         Some((Ok(Token::Cache), _)) => path.push_str("cache"),
-                        Some((Ok(Token::Queue), _)) => path.push_str("queue"),
-                        Some((Ok(Token::View), _)) => path.push_str("view"),
-                        Some((Ok(Token::Model), _)) => path.push_str("model"),
-                        Some((Ok(Token::Stream), _)) => path.push_str("stream"),
                         Some((Ok(Token::Style), _)) => path.push_str("style"),
                         Some((Ok(Token::Client), _)) => path.push_str("client"),
-                        Some((Ok(Token::Validate), _)) => path.push_str("validate"),
-                        Some((Ok(Token::Get), _)) => path.push_str("get"),
-                        Some((Ok(Token::Post), _)) => path.push_str("post"),
-                        Some((Ok(Token::Put), _)) => path.push_str("put"),
-                        Some((Ok(Token::Patch), _)) => path.push_str("patch"),
-                        Some((Ok(Token::Delete), _)) => path.push_str("delete"),
-                        Some((Ok(Token::RouteGroup), _)) => path.push_str("route"),
                         Some((Ok(Token::Only), _)) => path.push_str("only"),
                         Some((Ok(Token::Except), _)) => path.push_str("except"),
-                        Some((Ok(Token::Transaction), _)) => path.push_str("transaction"),
                         Some((Ok(Token::Parallel), _)) => path.push_str("parallel"),
                         Some((Ok(Token::Defer), _)) => path.push_str("defer"),
                         Some((Ok(Token::Retry), _)) => path.push_str("retry"),
                         Some((Ok(Token::Timeout), _)) => path.push_str("timeout"),
                         Some((Ok(Token::Step), _)) => path.push_str("step"),
-                        Some((Ok(Token::Js), _)) => path.push_str("js"),
                         Some((Ok(Token::Socket), _)) => path.push_str("socket"),
-                        Some((Ok(Token::ResourceRoute), _)) => path.push_str("resource"),
                         Some((Ok(Token::Times), _)) => path.push_str("times"),
                         Some((Ok(Token::With), _)) => path.push_str("with"),
                         Some((Err(_), span)) => return Err(ParseError::UnexpectedToken(format!("Lexer error at {}..{}", span.start, span.end))),
+                        Some((Ok(tok), _)) => {
+                            let tok_str = format!("{:?}", tok).to_lowercase();
+                            path.push_str(&tok_str);
+                        },
                         Some((tok, _)) => return Err(ParseError::UnexpectedToken(format!("Expected identifier in summon path, found {:?}", tok))),
                         None => return Err(ParseError::UnexpectedEOF("Expected identifier in summon path".into())),
                     }
@@ -166,15 +148,7 @@ impl<'a> Parser<'a> {
                 Ok(ast::Statement::Summon(path))
             }
 
-            // Model / ORM
-            Some((Ok(Token::Model), _)) => {
-                self.parse_model_decl(doc_comment).map(ast::Statement::ModelDecl)
-            }
 
-            // View / Template
-            Some((Ok(Token::View), _)) => {
-                self.parse_view_decl().map(ast::Statement::ViewDecl)
-            }
 
             // Async / Concurrency
             Some((Ok(Token::Parallel), _)) => {
@@ -187,22 +161,6 @@ impl<'a> Parser<'a> {
                 self.parse_retry_block().map(ast::Statement::RetryBlock)
             }
 
-            // Web Blocks
-            Some((Ok(Token::Validate), _)) => {
-                self.parse_validate_block().map(ast::Statement::ValidateBlock)
-            }
-            Some((Ok(Token::Transaction), _)) => {
-                self.parse_transaction_block().map(ast::Statement::TransactionBlock)
-            }
-            Some((Ok(Token::Queue), _)) => {
-                self.parse_queue_stmt().map(ast::Statement::QueueStmt)
-            }
-            Some((Ok(Token::Stream), _)) => {
-                self.parse_stream_decl().map(ast::Statement::StreamDecl)
-            }
-            Some((Ok(Token::Js), _)) => {
-                self.parse_js_block().map(ast::Statement::JsBlock)
-            }
 
             _ => {
                 // Could be:
@@ -304,11 +262,6 @@ impl<'a> Parser<'a> {
 
         let name = match self.lexer.next() {
             Some((Ok(Token::Ident(n)), _)) => n,
-            Some((Ok(Token::Get), _)) => "get".to_string(),
-            Some((Ok(Token::Post), _)) => "post".to_string(),
-            Some((Ok(Token::Put), _)) => "put".to_string(),
-            Some((Ok(Token::Patch), _)) => "patch".to_string(),
-            Some((Ok(Token::Delete), _)) => "delete".to_string(),
             _ => return Err(ParseError::UnexpectedToken("Expected rune name".into())),
         };
 
@@ -665,308 +618,11 @@ impl<'a> Parser<'a> {
 
     // ── HTTP Routing ─────────────────────────────────────────────────────────
 
-    fn parse_route_decl(&mut self, method: ast::HttpMethod) -> Result<ast::Statement, ParseError> {
-        self.lexer.next(); // consume get/post/put/patch/delete
 
-        let path = match self.lexer.next() {
-            Some((Ok(Token::Str(p)), _)) => p,
-            Some((Ok(Token::Ident(i)), _)) if i == "health_check" => {
-                return Err(ParseError::UnexpectedToken("Expected route path string".into()));
-            }
-            _ => return Err(ParseError::UnexpectedToken("Expected route path".into())),
-        };
 
-        // health check shorthand: get "/health" health_check
-        if let Some((Ok(Token::Ident(n)), _)) = self.lexer.peek() {
-            if n == "health_check" {
-                self.lexer.next(); // consume health_check
-                return Ok(ast::Statement::RouteDecl(ast::RouteDecl {
-                    method,
-                    path,
-                    body: vec![ast::Statement::RetStmt(ast::Expression::Literal(ast::Literal::Str("ok".to_string())))],
-                    decorators: vec![],
-                    with_clauses: vec![],
-                }));
-            }
-        }
-
-        let mut decorators = Vec::new();
-        while let Some((Ok(Token::With), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume with
-            let name = match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => n,
-                _ => return Err(ParseError::UnexpectedToken("Expected decorator name after with".into())),
-            };
-            let mut args = Vec::new();
-            if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
-                self.lexer.next();
-                while let Some((Ok(tok), _)) = self.lexer.peek() {
-                    if tok == &Token::RParen { break; }
-                    args.push(self.parse_expression(0)?);
-                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                    }
-                }
-                self.expect(Token::RParen)?;
-            }
-            decorators.push(ast::RouteDecorator { name, args });
-        }
-
-        let mut with_clauses = Vec::new();
-        if let Some((Ok(Token::With), _)) = self.lexer.peek() {
-            self.lexer.next();
-            loop {
-                let name = match self.lexer.next() {
-                    Some((Ok(Token::Ident(n)), _)) => n,
-                    _ => return Err(ParseError::UnexpectedToken("Expected decorator name in with clause".into())),
-                };
-                let mut args = Vec::new();
-                if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
-                    self.lexer.next();
-                    while let Some((Ok(tok), _)) = self.lexer.peek() {
-                        if tok == &Token::RParen { break; }
-                        args.push(self.parse_expression(0)?);
-                        if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                            self.lexer.next();
-                        }
-                    }
-                    self.expect(Token::RParen)?;
-                }
-                with_clauses.push(ast::WithClause { name, args });
-                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                    self.lexer.next();
-                } else {
-                    break;
-                }
-            }
-        }
-
-        let body = if let Some((Ok(Token::Arrow), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume ->
-            let expr = self.parse_expression(0)?;
-            vec![ast::Statement::RetStmt(expr)]
-        } else {
-            self.expect(Token::LBrace)?;
-            let mut body = Vec::new();
-            while let Some((Ok(tok), _)) = self.lexer.peek() {
-                if tok == &Token::RBrace { break; }
-                body.push(self.parse_statement()?);
-            }
-            self.expect(Token::RBrace)?;
-            body
-        };
-
-        Ok(ast::Statement::RouteDecl(ast::RouteDecl { method, path, body, decorators, with_clauses }))
-    }
-
-    fn parse_route_group(&mut self) -> Result<ast::Statement, ParseError> {
-        self.expect(Token::RouteGroup)?;
-
-        let prefix = match self.lexer.next() {
-            Some((Ok(Token::Str(p)), _)) => p,
-            _ => return Err(ParseError::UnexpectedToken("Expected prefix path string after route".into())),
-        };
-
-        // Optional decorators: with auth(), with cors(...)
-        let mut decorators = Vec::new();
-        while let Some((Ok(Token::With), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume with
-            let name = match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => n,
-                _ => return Err(ParseError::UnexpectedToken("Expected decorator name after with".into())),
-            };
-            let mut args = Vec::new();
-            if let Some((Ok(Token::LParen), _)) = self.lexer.peek() {
-                self.lexer.next();
-                while let Some((Ok(tok), _)) = self.lexer.peek() {
-                    if tok == &Token::RParen { break; }
-                    args.push(self.parse_expression(0)?);
-                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                    }
-                }
-                self.expect(Token::RParen)?;
-            }
-            decorators.push(ast::RouteDecorator { name, args });
-        }
-
-        self.expect(Token::LBrace)?;
-        let mut body = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RBrace { break; }
-            body.push(self.parse_statement()?);
-        }
-        self.expect(Token::RBrace)?;
-
-        Ok(ast::Statement::RouteGroup(ast::RouteGroupStmt {
-            prefix,
-            decorators,
-            body,
-        }))
-    }
-
-    fn parse_resource_route(&mut self) -> Result<ast::Statement, ParseError> {
-        self.expect(Token::ResourceRoute)?;
-
-        let path = match self.lexer.next() {
-            Some((Ok(Token::Str(p)), _)) => p,
-            _ => return Err(ParseError::UnexpectedToken("Expected resource path string".into())),
-        };
-
-        self.expect(Token::Arrow)?;
-
-        let controller = match self.lexer.next() {
-            Some((Ok(Token::Ident(c)), _)) => c,
-            Some((Ok(Token::Get), _)) => "get".to_string(),
-            Some((Ok(Token::Post), _)) => "post".to_string(),
-            Some((Ok(Token::Put), _)) => "put".to_string(),
-            Some((Ok(Token::Patch), _)) => "patch".to_string(),
-            Some((Ok(Token::Delete), _)) => "delete".to_string(),
-            _ => return Err(ParseError::UnexpectedToken("Expected controller identifier after ->".into())),
-        };
-
-        let mut only = None;
-        let mut except = None;
-
-        if let Some((Ok(Token::Only), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume only
-            self.expect(Token::LBracket)?;
-            let mut actions = Vec::new();
-            while let Some((Ok(tok), _)) = self.lexer.peek() {
-                if tok == &Token::RBracket { break; }
-                let action = match self.lexer.next() {
-                    Some((Ok(Token::Ident(a)), _)) => a,
-                    _ => return Err(ParseError::UnexpectedToken("Expected action identifier in only list".into())),
-                };
-                actions.push(action);
-                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                    self.lexer.next();
-                }
-            }
-            self.expect(Token::RBracket)?;
-            only = Some(actions);
-        } else if let Some((Ok(Token::Except), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume except
-            self.expect(Token::LBracket)?;
-            let mut actions = Vec::new();
-            while let Some((Ok(tok), _)) = self.lexer.peek() {
-                if tok == &Token::RBracket { break; }
-                let action = match self.lexer.next() {
-                    Some((Ok(Token::Ident(a)), _)) => a,
-                    _ => return Err(ParseError::UnexpectedToken("Expected action identifier in except list".into())),
-                };
-                actions.push(action);
-                if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                    self.lexer.next();
-                }
-            }
-            self.expect(Token::RBracket)?;
-            except = Some(actions);
-        }
-
-        Ok(ast::Statement::ResourceRoute(ast::ResourceRouteStmt {
-            path,
-            controller,
-            only,
-            except,
-        }))
-    }
 
     // ── Model / ORM ──────────────────────────────────────────────────────────
 
-    fn parse_model_decl(&mut self, doc_comment: Option<String>) -> Result<ast::ModelDecl, ParseError> {
-        self.expect(Token::Model)?;
-
-        let name = match self.lexer.next() {
-            Some((Ok(Token::Ident(n)), _)) => n,
-            _ => return Err(ParseError::UnexpectedToken("Expected model name".into())),
-        };
-
-        // Generic parameters? <T, U>
-        if let Some((Ok(Token::Less), _)) = self.lexer.peek() {
-            self.lexer.next(); // consume <
-            while let Some((Ok(tok), _)) = self.lexer.peek() {
-                if tok == &Token::Greater { break; }
-                self.lexer.next(); // Just consume generic names for now
-            }
-            self.expect(Token::Greater)?;
-        }
-
-        self.expect(Token::LBrace)?;
-        let mut fields = Vec::new();
-
-        let mut methods = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RBrace { break; }
-
-            let is_static = if let Token::Ident(id) = token { id.as_str() == "static" } else { false };
-            let is_rune = token == &Token::Rune;
-
-            if is_rune || is_static {
-                let mut is_public = false; 
-                if is_static {
-                    self.lexer.next();
-                }
-                let mut rune_decl = self.parse_rune_decl(None)?;
-                
-                if !is_static {
-                    rune_decl.params.insert(0, ast::RuneParam {
-                        name: "self".to_string(),
-                        type_expr: ast::TypeExpr::Named(name.clone()),
-                        default_value: None,
-                        is_variadic: false,
-                    });
-                }
-                
-                methods.push(rune_decl);
-                continue;
-            }
-
-            let field_name = match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => n,
-                _ => return Err(ParseError::UnexpectedToken("Expected field name in model".into())),
-            };
-
-            self.expect(Token::Colon)?;
-            let type_expr = self.parse_type_expr()?;
-
-            // Tags: [pk, auto, unique, index, ...]
-            let mut tags = Vec::new();
-            if let Some((Ok(Token::LBracket), _)) = self.lexer.peek() {
-                self.lexer.next(); // consume [
-                while let Some((Ok(tok), _)) = self.lexer.peek() {
-                    if tok == &Token::RBracket { break; }
-                    let tag = match self.lexer.next() {
-                        Some((Ok(Token::Ident(t)), _)) => t,
-                        _ => break,
-                    };
-                    tags.push(tag);
-                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                    }
-                }
-                self.expect(Token::RBracket)?;
-            }
-
-            // Default value: field = expr
-            let default_value = if let Some((Ok(Token::Eq), _)) = self.lexer.peek() {
-                self.lexer.next();
-                Some(self.parse_expression(0)?)
-            } else {
-                None
-            };
-
-            fields.push(ast::ModelField { name: field_name, type_expr, tags, default_value });
-
-            // Optional comma or newline separator
-            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                self.lexer.next();
-            }
-        }
-
-        self.expect(Token::RBrace)?;
-        Ok(ast::ModelDecl { name, fields, methods, is_public: false, doc_comment })
-    }
 
     // ── Async / Concurrency ───────────────────────────────────────────────────
 
@@ -1017,253 +673,14 @@ impl<'a> Parser<'a> {
 
     // ── Web Blocks ────────────────────────────────────────────────────────────
 
-    fn parse_validate_block(&mut self) -> Result<ast::ValidateBlock, ParseError> {
-        self.expect(Token::Validate)?;
-        self.expect(Token::LParen)?;
-        let target = Box::new(self.parse_expression(0)?);
-        self.expect(Token::RParen)?;
-        self.expect(Token::As)?;
-        self.expect(Token::LBrace)?;
 
-        let mut fields = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RBrace { break; }
-            let name = match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => n,
-                _ => break,
-            };
-            self.expect(Token::Colon)?;
-            let type_expr = self.parse_type_expr()?;
 
-            let mut rules = Vec::new();
-            if let Some((Ok(Token::LBracket), _)) = self.lexer.peek() {
-                self.lexer.next();
-                while let Some((Ok(tok), _)) = self.lexer.peek() {
-                    if tok == &Token::RBracket { break; }
-                    let rule_name = match self.lexer.next() {
-                        Some((Ok(Token::Ident(r)), _)) => r,
-                        _ => break,
-                    };
-                    let rule = match rule_name.as_str() {
-                        "required" => ast::ValidateRule::Required,
-                        "email" => ast::ValidateRule::Email,
-                        "url" => ast::ValidateRule::Url,
-                        "min" => {
-                            self.expect(Token::Colon)?;
-                            ast::ValidateRule::Min(self.parse_expression(0)?)
-                        }
-                        "max" => {
-                            self.expect(Token::Colon)?;
-                            ast::ValidateRule::Max(self.parse_expression(0)?)
-                        }
-                        "min_len" => {
-                            self.expect(Token::Colon)?;
-                            ast::ValidateRule::MinLen(self.parse_expression(0)?)
-                        }
-                        "max_len" => {
-                            self.expect(Token::Colon)?;
-                            ast::ValidateRule::MaxLen(self.parse_expression(0)?)
-                        }
-                        other => ast::ValidateRule::Custom(other.to_string()),
-                    };
-                    rules.push(rule);
-                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                    }
-                }
-                self.expect(Token::RBracket)?;
-            }
-            fields.push(ast::ValidateField { name, type_expr, rules });
-            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                self.lexer.next();
-            }
-        }
-        self.expect(Token::RBrace)?;
-        Ok(ast::ValidateBlock { target, fields })
-    }
 
-    fn parse_transaction_block(&mut self) -> Result<ast::TransactionBlock, ParseError> {
-        self.expect(Token::Transaction)?;
-        self.expect(Token::LBrace)?;
-        let mut body = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RBrace { break; }
-            body.push(self.parse_statement()?);
-        }
-        self.expect(Token::RBrace)?;
-        Ok(ast::TransactionBlock { body })
-    }
 
-    fn parse_queue_stmt(&mut self) -> Result<ast::QueueStmt, ParseError> {
-        self.expect(Token::Queue)?;
-        let call = Box::new(self.parse_expression(0)?);
-        Ok(ast::QueueStmt { call })
-    }
-
-    fn parse_stream_decl(&mut self) -> Result<ast::StreamDecl, ParseError> {
-        self.expect(Token::Stream)?;
-        let path = match self.lexer.next() {
-            Some((Ok(Token::Str(p)), _)) => p,
-            _ => return Err(ParseError::UnexpectedToken("Expected path string after stream".into())),
-        };
-        self.expect(Token::LBrace)?;
-        let mut body = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            if token == &Token::RBrace { break; }
-            body.push(self.parse_statement()?);
-        }
-        self.expect(Token::RBrace)?;
-        Ok(ast::StreamDecl { path, body })
-    }
-
-    fn parse_js_block(&mut self) -> Result<ast::JsBlock, ParseError> {
-        self.expect(Token::Js)?;
-        self.expect(Token::LBrace)?;
-        // Collect raw tokens as string until matching }
-        let mut raw = String::new();
-        let mut depth = 1u32;
-        loop {
-            match self.lexer.next() {
-                Some((Ok(Token::LBrace), _)) => { depth += 1; raw.push('{'); }
-                Some((Ok(Token::RBrace), _)) => {
-                    depth -= 1;
-                    if depth == 0 { break; }
-                    raw.push('}');
-                }
-                Some((Ok(Token::Ident(s)), _)) => { raw.push_str(&s); raw.push(' '); }
-                Some((Ok(Token::Str(s)), _)) => { raw.push('"'); raw.push_str(&s); raw.push('"'); }
-                Some((Ok(Token::Int(n)), _)) => { raw.push_str(&n.to_string()); }
-                Some((Ok(Token::Float(f)), _)) => { raw.push_str(&f.to_string()); }
-                Some((Ok(Token::Dot), _)) => { raw.push('.'); }
-                Some((Ok(Token::LParen), _)) => { raw.push('('); }
-                Some((Ok(Token::RParen), _)) => { raw.push(')'); }
-                Some((Ok(Token::Comma), _)) => { raw.push_str(", "); }
-                Some((Ok(Token::Semi), _)) => { raw.push_str(";\n"); }
-                Some((Ok(_), _)) => { raw.push(' '); }
-                None => return Err(ParseError::UnexpectedEOF("Unclosed js block".into())),
-                Some((Err(_), _)) => {}
-            }
-        }
-        Ok(ast::JsBlock { raw: raw.trim().to_string() })
-    }
 
     // ── View / HTML Template ──────────────────────────────────────────────────
 
-    fn parse_view_decl(&mut self) -> Result<ast::ViewDecl, ParseError> {
-        self.expect(Token::View)?;
-        let name = match self.lexer.next() {
-            Some((Ok(Token::Ident(n)), _)) => n,
-            _ => return Err(ParseError::UnexpectedToken("Expected view name".into())),
-        };
-        let params = self.parse_rune_params()?;
-        self.expect(Token::LBrace)?;
-        let body = self.parse_html_children()?;
-        self.expect(Token::RBrace)?;
-        Ok(ast::ViewDecl { name, params, body })
-    }
 
-    fn parse_html_children(&mut self) -> Result<Vec<ast::HtmlNode>, ParseError> {
-        let mut children = Vec::new();
-        while let Some((Ok(token), _)) = self.lexer.peek() {
-            match token {
-                Token::RBrace => break,
-                Token::Less => {
-                    self.lexer.next();
-                    // Closing tag </tag>
-                    if let Some((Ok(Token::Slash), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                        self.lexer.next(); // consume tag name
-                        self.expect(Token::Greater)?;
-                        break;
-                    }
-                    let tag = match self.lexer.next() {
-                        Some((Ok(Token::Ident(t)), _)) => t,
-                        _ => return Err(ParseError::UnexpectedToken("Expected tag name".into())),
-                    };
-                    let mut attrs = Vec::new();
-                    let mut self_closing = false;
-                    while let Some((Ok(tok), _)) = self.lexer.peek() {
-                        match tok {
-                            Token::Greater => { self.lexer.next(); break; }
-                            Token::Slash => {
-                                self.lexer.next();
-                                self.expect(Token::Greater)?;
-                                self_closing = true;
-                                break;
-                            }
-                            Token::Ident(_) => {
-                                let attr_name = match self.lexer.next() {
-                                    Some((Ok(Token::Ident(n)), _)) => n,
-                                    _ => break,
-                                };
-                                if let Some((Ok(Token::Eq), _)) = self.lexer.peek() {
-                                    self.lexer.next();
-                                    let val = if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
-                                        self.lexer.next();
-                                        let expr = self.parse_expression(0)?;
-                                        self.expect(Token::RBrace)?;
-                                        ast::HtmlAttrValue::Expr(expr)
-                                    } else {
-                                        match self.lexer.next() {
-                                            Some((Ok(Token::Str(s)), _)) => ast::HtmlAttrValue::Static(s),
-                                            _ => return Err(ParseError::UnexpectedToken("Expected attribute value".into())),
-                                        }
-                                    };
-                                    attrs.push((attr_name, val));
-                                }
-                            }
-                            _ => { self.lexer.next(); }
-                        }
-                    }
-                    let child_nodes = if self_closing { vec![] } else { self.parse_html_children()? };
-                    children.push(ast::HtmlNode::Element { tag, attrs, children: child_nodes, self_closing });
-                }
-                Token::LBrace => {
-                    self.lexer.next();
-                    if let Some((Ok(Token::For), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                        let item = match self.lexer.next() {
-                            Some((Ok(Token::Ident(n)), _)) => n,
-                            _ => return Err(ParseError::UnexpectedToken("Expected item variable".into())),
-                        };
-                        self.expect(Token::In)?;
-                        let collection = Box::new(self.parse_expression(0)?);
-                        self.expect(Token::LBrace)?;
-                        let inner = self.parse_html_children()?;
-                        self.expect(Token::RBrace)?;
-                        self.expect(Token::RBrace)?;
-                        children.push(ast::HtmlNode::ForNode { item, collection, children: inner });
-                    } else if let Some((Ok(Token::If), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                        let condition = Box::new(self.parse_expression(0)?);
-                        self.expect(Token::LBrace)?;
-                        let then = self.parse_html_children()?;
-                        self.expect(Token::RBrace)?;
-                        let else_ = if let Some((Ok(Token::Else), _)) = self.lexer.peek() {
-                            self.lexer.next();
-                            self.expect(Token::LBrace)?;
-                            let e = self.parse_html_children()?;
-                            self.expect(Token::RBrace)?;
-                            Some(e)
-                        } else { None };
-                        self.expect(Token::RBrace)?;
-                        children.push(ast::HtmlNode::IfNode { condition, then, else_ });
-                    } else {
-                        let expr = self.parse_expression(0)?;
-                        self.expect(Token::RBrace)?;
-                        children.push(ast::HtmlNode::Expr(expr));
-                    }
-                }
-                Token::Str(s) => {
-                    let s = s.clone();
-                    self.lexer.next();
-                    children.push(ast::HtmlNode::Text(s));
-                }
-                _ => { self.lexer.next(); }
-            }
-        }
-        Ok(children)
-    }
 
     // ── Expression Parsing (Pratt Parser) ────────────────────────────────────
 
@@ -1274,20 +691,69 @@ impl<'a> Parser<'a> {
             // Check for postfix operators
             match self.lexer.peek() {
                 Some((Ok(Token::Question), _)) => {
-                    self.lexer.next();
-                    lhs = ast::Expression::ErrorPropagate(Box::new(lhs));
-                    continue;
+                    // Distinguish between:
+                    // - Error propagation: `expr?` (nothing after or non-expression token)
+                    // - Ternary: `cond ? true_expr : false_expr` (expression after ?)
+                    
+                    // Simple heuristic: if we're at min_bp 0 (top level) and there's
+                    // something expression-like after ?, try ternary. Otherwise, error propagation.
+                    
+                    // Ternary has very low precedence (should only parse at statement/assignment level)
+                    // Ternary operator must only be recognized at min_bp <= 1 to avoid consuming ? inside
+                    // binary expressions like `x > 0 ? ...` where the RHS of > is parsed with min_bp=8
+                    let ternary_bp = 1u8;
+                    
+                    if min_bp > ternary_bp {
+                        // We're in a higher precedence context (e.g., inside a binary operator's RHS),
+                        // The ? should NOT be consumed here - let the outer expression handle it
+                        // Just break out of the loop without consuming the token
+                        break;
+                    }
+                    
+                    // Peek ahead: is there something after `?` that looks like an expression?
+                    self.lexer.next(); // consume ?
+                    
+                    // Check what's next
+                    match self.lexer.peek() {
+                        // If we see nothing, or statement-ending tokens, it's error propagation
+                        None | Some((Ok(Token::RParen | Token::RBrace | Token::RBracket | 
+                                         Token::Comma | Token::Semi), _)) => {
+                            lhs = ast::Expression::ErrorPropagate(Box::new(lhs));
+                            continue;
+                        }
+                        // Otherwise, try to parse as ternary
+                        _ => {}
+                    }
+                    
+                    // Parse the true branch with high precedence to ensure we consume only
+                    // the immediate expression and stop before the `:` colon
+                    // Use a precedence higher than all binary operators (which top out at 13-14)
+                    let true_expr = self.parse_expression(15)?;
+                    
+                    // Check if colon follows
+                    if matches!(self.lexer.peek(), Some((Ok(Token::Colon), _))) {
+                        // It's a ternary expression
+                        self.lexer.next(); // consume :
+                        let false_expr = self.parse_expression(ternary_bp)?;
+                        
+                        lhs = ast::Expression::TernaryExpr {
+                            condition: Box::new(lhs),
+                            true_expr: Box::new(true_expr),
+                            false_expr: Box::new(false_expr),
+                        };
+                        continue;
+                    } else {
+                        // No colon - this is a syntax error
+                        return Err(ParseError::UnexpectedToken(
+                            "Expected ':' after '?' in ternary expression".into()
+                        ));
+                    }
                 }
                 Some((Ok(Token::Dot), _)) | Some((Ok(Token::SafeChain), _)) => {
                     let is_safe = matches!(self.lexer.peek(), Some((Ok(Token::SafeChain), _)));
                     self.lexer.next(); // consume . or ?.
                     let member = match self.lexer.next() {
                         Some((Ok(Token::Ident(n)), _)) => n,
-                        Some((Ok(Token::Get), _)) => "get".to_string(),
-                        Some((Ok(Token::Post), _)) => "post".to_string(),
-                        Some((Ok(Token::Put), _)) => "put".to_string(),
-                        Some((Ok(Token::Patch), _)) => "patch".to_string(),
-                        Some((Ok(Token::Delete), _)) => "delete".to_string(),
                         _ => return Err(ParseError::UnexpectedToken("Expected member name after .".into())),
                     };
                     // Method call?
@@ -1302,23 +768,6 @@ impl<'a> Parser<'a> {
                             }
                         }
                         self.expect(Token::RParen)?;
-
-                        // Trailing closure check for method calls (Disabled to prevent eating `if` blocks)
-                        /*
-                        if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
-                            self.lexer.next();
-                            let mut closure_body = Vec::new();
-                            while let Some((Ok(tok), _)) = self.lexer.peek() {
-                                if tok == &Token::RBrace { break; }
-                                closure_body.push(self.parse_statement()?);
-                            }
-                            self.expect(Token::RBrace)?;
-                            args.push(ast::Expression::ClosureExpr {
-                                params: vec!["it".to_string()],
-                                body: closure_body,
-                            });
-                        }
-                        */
 
                         let callee = Box::new(ast::Expression::MemberAccess {
                             object: Box::new(lhs),
@@ -1583,25 +1032,6 @@ impl<'a> Parser<'a> {
                 Ok(ast::Expression::EnvExpr(key))
             }
 
-            // view("welcome")
-            Some((Ok(Token::View), _)) => {
-                self.lexer.next();
-                self.expect(Token::LParen)?;
-                let mut args = Vec::new();
-                while let Some((Ok(tok), _)) = self.lexer.peek() {
-                    if tok == &Token::RParen { break; }
-                    args.push(self.parse_expression(0)?);
-                    if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                    }
-                }
-                self.expect(Token::RParen)?;
-                Ok(ast::Expression::CallExpr {
-                    callee: Box::new(ast::Expression::Identifier("view".to_string())),
-                    args,
-                })
-            }
-
             // self / this keywords
             Some((Ok(Token::SelfKeyword), _)) => {
                 self.lexer.next();
@@ -1653,37 +1083,11 @@ impl<'a> Parser<'a> {
                     });
                 }
 
-                // Struct instantiation: TypeName { field: val, ... }
-                if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
-                    // Only parse as struct if name starts with uppercase
-                    if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                        self.lexer.next();
-                        let mut fields = Vec::new();
-                        while let Some((Ok(tok), _)) = self.lexer.peek() {
-                            if tok == &Token::RBrace { break; }
-                            let field_name = match self.lexer.next() {
-                                Some((Ok(Token::Ident(n)), _)) => n,
-                                _ => break,
-                            };
-                            self.expect(Token::Colon)?;
-                            let val = self.parse_expression(0)?;
-                            fields.push((field_name, val));
-                            if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
-                                self.lexer.next();
-                            }
-                        }
-                        self.expect(Token::RBrace)?;
-                        return Ok(ast::Expression::StructInst { name, fields });
-                    }
-                }
-
+                // Just return the identifier
                 Ok(ast::Expression::Identifier(name))
             }
 
-            Some((tok, _)) => Err(ParseError::UnexpectedToken(
-                format!("Unexpected token in expression: {:?}", tok)
-            )),
-            None => Err(ParseError::UnexpectedEOF("Expected expression".into())),
+            _ => Err(ParseError::UnexpectedToken("Unexpected token in expression".into())),
         }
     }
 
@@ -1902,81 +1306,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_model() {
-        let lexer = CariaLexer::new("model User {\n    id: int [pk, auto]\n    name: txt\n}");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap();
-        match &program.statements[0] {
-            ast::Statement::ModelDecl(m) => {
-                assert_eq!(m.name, "User");
-                assert_eq!(m.fields.len(), 2);
-                assert_eq!(m.fields[0].name, "id");
-                assert!(m.fields[0].tags.contains(&"pk".to_string()));
-            }
-            _ => panic!("Expected ModelDecl"),
-        }
-    }
-
-    #[test]
-    fn test_parse_route_get() {
-        let lexer = CariaLexer::new("get \"/users\" { ret nil }");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap();
-        match &program.statements[0] {
-            ast::Statement::RouteDecl(r) => {
-                assert_eq!(r.method, ast::HttpMethod::Get);
-                assert_eq!(r.path, "/users");
-            }
-            _ => panic!("Expected RouteDecl"),
-        }
-    }
-
-    #[test]
-
-    #[test]
-    fn test_parse_route_group() {
-        let lexer = CariaLexer::new("route \"/api/v1\" with auth() {\n get \"/users\" -> handler\n}");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap();
-        match &program.statements[0] {
-            ast::Statement::RouteGroup(g) => {
-                assert_eq!(g.prefix, "/api/v1");
-                assert_eq!(g.decorators.len(), 1);
-                assert_eq!(g.decorators[0].name, "auth");
-                assert_eq!(g.body.len(), 1);
-            }
-            _ => panic!("Expected RouteGroup statement"),
-        }
-    }
-
-    #[test]
-    fn test_parse_resource_route() {
-        let lexer = CariaLexer::new("resource \"/posts\" -> PostController only [index, show]");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap();
-        match &program.statements[0] {
-            ast::Statement::ResourceRoute(r) => {
-                assert_eq!(r.path, "/posts");
-                assert_eq!(r.controller, "PostController");
-                assert_eq!(r.only, Some(vec!["index".to_string(), "show".to_string()]));
-                assert_eq!(r.except, None);
-            }
-            _ => panic!("Expected ResourceRoute statement"),
-        }
-    }
-
-    #[test]
-    fn test_parse_route_arrow() {
-        let lexer = CariaLexer::new("get \"/\" -> view(\"welcome\")");
-        let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap();
-        match &program.statements[0] {
-            ast::Statement::RouteDecl(r) => {
-                assert_eq!(r.path, "/");
-                assert_eq!(r.body.len(), 1);
-            }
-            _ => panic!("Expected RouteDecl statement"),
-        }
-    }
 }

@@ -38,30 +38,10 @@ pub enum Statement {
     // Fallthrough for pattern matching
     FallthroughStmt,
 
-    // HTTP Routing
-    RouteDecl(RouteDecl),
-    RouteGroup(RouteGroupStmt),
-    ResourceRoute(ResourceRouteStmt),
-
-    // Database / ORM
-    ModelDecl(ModelDecl),
-
     // Async / Concurrency
     ParallelBlock(ParallelBlock),
     DeferStmt(DeferStmt),
     RetryBlock(RetryBlock),
-
-    // Web Blocks
-    ValidateBlock(ValidateBlock),
-    TransactionBlock(TransactionBlock),
-    QueueStmt(QueueStmt),
-    StreamDecl(StreamDecl),
-
-    // View / Template
-    ViewDecl(ViewDecl),
-
-    // Raw JS Escape
-    JsBlock(JsBlock),
 
     // Output
     SayStmt(Expression),
@@ -186,72 +166,6 @@ pub struct ForInStmt {
     pub else_body: Option<Vec<Statement>>,  // for ... in ... { } else { }
 }
 
-// ── HTTP Routing ──────────────────────────────────────────────────────────────
-#[derive(Debug, PartialEq, Clone)]
-pub enum HttpMethod {
-    Get,
-    Post,
-    Put,
-    Patch,
-    Delete,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct RouteDecl {
-    pub method: HttpMethod,
-    pub path: String,       // "/users/{id}"
-    pub body: Vec<Statement>,
-    pub decorators: Vec<RouteDecorator>,
-    pub with_clauses: Vec<WithClause>,  // with rate_limit(100), cors("url")
-}
-
-/// Inline middleware: `with rate_limit(100), cors("url")` after route path
-#[derive(Debug, PartialEq, Clone)]
-pub struct WithClause {
-    pub name: String,
-    pub args: Vec<Expression>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct RouteGroupStmt {
-    pub prefix: String,
-    pub decorators: Vec<RouteDecorator>,
-    pub body: Vec<Statement>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ResourceRouteStmt {
-    pub path: String,
-    pub controller: String,
-    pub only: Option<Vec<String>>,
-    pub except: Option<Vec<String>>,
-}
-
-/// Route-level decorators: @rate_limit, @auth, @cors, etc.
-#[derive(Debug, PartialEq, Clone)]
-pub struct RouteDecorator {
-    pub name: String,
-    pub args: Vec<Expression>,
-}
-
-// ── Model / ORM ───────────────────────────────────────────────────────────────
-#[derive(Debug, PartialEq, Clone)]
-pub struct ModelDecl {
-    pub name: String,
-    pub fields: Vec<ModelField>,
-    pub methods: Vec<RuneDecl>,
-    pub is_public: bool,
-    pub doc_comment: Option<String>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ModelField {
-    pub name: String,
-    pub type_expr: TypeExpr,
-    pub tags: Vec<String>,              // [pk, auto, unique, index, encrypted, auto_now, ...]
-    pub default_value: Option<Expression>,
-}
-
 // ── Async / Concurrency ───────────────────────────────────────────────────────
 /// parallel { ... }  — concurrent statement execution
 #[derive(Debug, PartialEq, Clone)]
@@ -271,95 +185,6 @@ pub struct RetryBlock {
     pub count: Box<Expression>,
     pub timeout_secs: Option<Box<Expression>>,
     pub body: Vec<Statement>,
-}
-
-// ── Web Blocks ────────────────────────────────────────────────────────────────
-/// validate(expr) as { field: Type [tags] }
-#[derive(Debug, PartialEq, Clone)]
-pub struct ValidateBlock {
-    pub target: Box<Expression>,
-    pub fields: Vec<ValidateField>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ValidateField {
-    pub name: String,
-    pub type_expr: TypeExpr,
-    pub rules: Vec<ValidateRule>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum ValidateRule {
-    Required,
-    Email,
-    Url,
-    Min(Expression),
-    Max(Expression),
-    MinLen(Expression),
-    MaxLen(Expression),
-    Pattern(String),
-    Custom(String),
-}
-
-/// transaction { ... }
-#[derive(Debug, PartialEq, Clone)]
-pub struct TransactionBlock {
-    pub body: Vec<Statement>,
-}
-
-/// queue job_name(args)
-#[derive(Debug, PartialEq, Clone)]
-pub struct QueueStmt {
-    pub call: Box<Expression>,
-}
-
-/// stream "/path" { ... }
-#[derive(Debug, PartialEq, Clone)]
-pub struct StreamDecl {
-    pub path: String,
-    pub body: Vec<Statement>,
-}
-
-/// js { raw_code }  — raw JavaScript escape hatch
-#[derive(Debug, PartialEq, Clone)]
-pub struct JsBlock {
-    pub raw: String,
-}
-
-// ── View / HTML Template ──────────────────────────────────────────────────────
-#[derive(Debug, PartialEq, Clone)]
-pub struct ViewDecl {
-    pub name: String,
-    pub params: Vec<RuneParam>,
-    pub body: Vec<HtmlNode>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum HtmlNode {
-    Element {
-        tag: String,
-        attrs: Vec<(String, HtmlAttrValue)>,
-        children: Vec<HtmlNode>,
-        self_closing: bool,
-    },
-    Text(String),
-    Expr(Expression),       // {expr} interpolation
-    IfNode {
-        condition: Box<Expression>,
-        then: Vec<HtmlNode>,
-        else_: Option<Vec<HtmlNode>>,
-    },
-    ForNode {
-        item: String,
-        collection: Box<Expression>,
-        children: Vec<HtmlNode>,
-    },
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum HtmlAttrValue {
-    Static(String),
-    Expr(Expression),
 }
 
 // ── Test Block ────────────────────────────────────────────────────────────────
@@ -438,12 +263,6 @@ pub enum Expression {
     ArrayLiteral(Vec<Expression>),
     MapLiteral(Vec<(Expression, Expression)>),
 
-    // Struct instantiation: TypeName { field: val }
-    StructInst {
-        name: String,
-        fields: Vec<(String, Expression)>,
-    },
-
     // Error propagation: expr?
     ErrorPropagate(Box<Expression>),
 
@@ -467,6 +286,13 @@ pub enum Expression {
     NullableCast {
         expr: Box<Expression>,
         target_type: TypeExpr,
+    },
+
+    // Ternary expression: cond ? true_expr : false_expr
+    TernaryExpr {
+        condition: Box<Expression>,
+        true_expr: Box<Expression>,
+        false_expr: Box<Expression>,
     },
 }
 

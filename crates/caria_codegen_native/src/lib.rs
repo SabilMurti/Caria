@@ -1,33 +1,37 @@
 pub mod translator;
 
 use caria_ir::IrProgram;
+use translator::JitCompiler;
 
 pub fn compile_to_native(ir: &IrProgram) -> Result<(), String> {
-    Ok(())
+    let mut jit = JitCompiler::new();
+    jit.compile(ir)
 }
 
-pub mod compiler {
-    pub struct CariaCompiler;
-    impl CariaCompiler {
-        pub fn new() -> Result<Self, String> { Ok(Self) }
-    }
-}
-pub mod runtime {}
+pub mod compiler;
+pub mod runtime;
 
 pub struct NativeCompiler;
 
 impl NativeCompiler {
     pub fn compile_to_object(prog: &caria_parser::ast::Program) -> Result<Vec<u8>, String> {
-        Ok(Vec::new())
+        let mut compiler = compiler::CariaCompiler::new_object()?;
+        compiler.compile_to_object(prog)
     }
     
     pub fn compile_to_jit(prog: &caria_parser::ast::Program) -> Result<*const u8, String> {
-        Ok(std::ptr::null())
+        let mut compiler = compiler::CariaCompiler::new_jit()?;
+        compiler.compile_to_jit(prog)
     }
     
     pub fn compile_and_get_function(prog: &caria_parser::ast::Program, name: &str) -> Result<extern "C" fn() -> i32, String> {
-        Ok(dummy_function)
+        let mut compiler = compiler::CariaCompiler::new_jit()?;
+        let ptr = compiler.compile_and_get_function(prog, name)?;
+        Ok(unsafe { std::mem::transmute(ptr) })
+    }
+    
+    pub fn compile_to_binary(prog: &caria_parser::ast::Program, output_path: &str) -> Result<(), String> {
+        let mut compiler = compiler::CariaCompiler::new_object()?;
+        compiler.compile_to_binary(prog, output_path)
     }
 }
-
-extern "C" fn dummy_function() -> i32 { 0 }

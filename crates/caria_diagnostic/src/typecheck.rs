@@ -106,14 +106,6 @@ impl TypeChecker {
                     self.check_statement(s)?;
                 }
             }
-            Statement::RouteDecl(r) => {
-                for s in &r.body {
-                    self.check_statement(s)?;
-                }
-            }
-            Statement::ModelDecl(_) => {
-                // Models are schema declarations — type checked separately at schema-level
-            }
             Statement::ParallelBlock(p) => {
                 for s in &p.body {
                     self.check_statement(s)?;
@@ -123,19 +115,6 @@ impl TypeChecker {
                 for s in &r.body {
                     self.check_statement(s)?;
                 }
-            }
-            Statement::TransactionBlock(t) => {
-                for s in &t.body {
-                    self.check_statement(s)?;
-                }
-            }
-            Statement::StreamDecl(s) => {
-                for stmt in &s.body {
-                    self.check_statement(stmt)?;
-                }
-            }
-            Statement::ViewDecl(v) => {
-                let _ = v; // HTML views checked at template level
             }
             Statement::ExprStmt(e) => {
                 self.infer_expression(e)?;
@@ -148,9 +127,6 @@ impl TypeChecker {
             }
             Statement::DeferStmt(d) => {
                 self.infer_expression(&d.expr)?;
-            }
-            Statement::QueueStmt(q) => {
-                self.infer_expression(&q.call)?;
             }
             _ => {}
         }
@@ -275,7 +251,6 @@ impl TypeChecker {
             Expression::ClosureExpr { .. } => Ok(("Function".into(), false)),
             Expression::ArrayLiteral(_) => Ok(("List".into(), false)),
             Expression::MapLiteral(_) => Ok(("Map".into(), false)),
-            Expression::StructInst { .. } => Ok(("Struct".into(), false)),
             Expression::ErrorPropagate(_) => Ok(("Any".into(), false)),
             Expression::EnvExpr(_) => Ok(("txt".into(), false)),
             Expression::NullableCast { target_type, .. } => {
@@ -284,6 +259,13 @@ impl TypeChecker {
                     _ => "Any".into(),
                 };
                 Ok((name, false))
+            }
+            Expression::TernaryExpr { condition, true_expr, false_expr } => {
+                self.infer_expression(condition)?;
+                let true_type = self.infer_expression(true_expr)?;
+                let false_type = self.infer_expression(false_expr)?;
+                // Return the true branch type; in a real typechecker we'd unify both branches
+                Ok((true_type.0, true_type.1 || false_type.1))
             }
         }
     }

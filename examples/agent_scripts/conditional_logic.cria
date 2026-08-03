@@ -1,0 +1,91 @@
+// ============================================================================
+// CONDITIONAL LOGIC AND BRANCHING
+// ============================================================================
+// Purpose: Demonstrates decision trees and multi-branch logic
+// Use Case: Classification, validation, rule engines, decision systems
+// Pattern: Cascading if-else chains and nested conditionals
+//
+// AI Agent Usage:
+// - Use if/else if/else for mutually exclusive conditions
+// - Use nested if for dependent conditions (AND logic)
+// - Keep conditions from most specific to least specific
+// - Use early returns in functions to reduce nesting
+//
+// Pattern Categories Demonstrated:
+// 1. Grade Classification (multi-tier thresholds)
+// 2. Binary Classification (even/odd check)
+// 3. Range Validation (nested bounds checking)
+// ============================================================================
+
+rune main() -> int {
+    // =============================================================
+    // PATTERN 1: Multi-Tier Classification (Grading System)
+    // =============================================================
+    // Use Case: Score → Grade mapping, tier systems, level assignment
+    // Technique: Ordered threshold checks from highest to lowest
+    
+    score := 85
+    
+    // Check thresholds in descending order
+    // Each branch is mutually exclusive
+    if (score >= 90) {
+        say(4)  // A grade (90-100)
+    } else if (score >= 80) {
+        say(3)  // B grade (80-89)
+    } else if (score >= 70) {
+        say(2)  // C grade (70-79)
+    } else if (score >= 60) {
+        say(1)  // D grade (60-69)
+    } else {
+        say(0)  // F grade (0-59)
+    }
+    
+    // =============================================================
+    // PATTERN 2: Binary Classification (Even/Odd Check)
+    // =============================================================
+    // Use Case: Parity checking, alternating behavior, modulo patterns
+    // Technique: Modulo operator for remainder-based decisions
+    
+    number := 42
+    remainder := number % 2
+    
+    // Modulo 2 gives 0 for even, 1 for odd
+    if (remainder == 0) {
+        say(1)  // Even number
+    } else {
+        say(0)  // Odd number
+    }
+    
+    // =============================================================
+    // PATTERN 3: Range Validation (Nested Bounds Checking)
+    // =============================================================
+    // Use Case: Input validation, boundary checking, safety guards
+    // Technique: Nested if for dependent conditions (AND logic)
+    
+    value := 50
+    
+    // Outer guard: check minimum bound
+    if (value > 0) {
+        // Inner check: verify maximum bound (only if minimum passed)
+        if (value < 100) {
+            say(1)  // Valid: in range [1-99]
+        } else {
+            say(0)  // Invalid: too large (≥100)
+        }
+    } else {
+        say(0)  // Invalid: non-positive (≤0)
+    }
+    
+    ret 0
+}
+
+// Best Practices for Conditionals:
+// 1. Order matters: Put most likely/common cases first for performance
+// 2. Avoid deep nesting: Extract complex conditions to variables
+// 3. Use early returns: Exit early on invalid input (guard clauses)
+// 4. Be explicit: Use parentheses in complex boolean expressions
+//
+// Alternative Patterns (for future Caria features):
+// 1. Ternary operator: grade := (score >= 60) ? "Pass" : "Fail"
+// 2. Switch/match statement for multiple exact matches
+// 3. Guard clauses: guard (value > 0) else { ret 1 }
