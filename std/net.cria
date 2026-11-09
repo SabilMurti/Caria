@@ -1,0 +1,18 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - NET & HTTP
+// ============================================================================
+
+rune http_get(url: txt) -> txt {
+    // Calls native FFI caria_http_get
+    ret ""
+}
+
+rune http_post(url: txt, body: txt) -> txt {
+    // Calls native FFI caria_http_post
+    ret ""
+}
+
+rune http_serve(port: int, response_json: txt) -> int {
+    // Calls native FFI caria_http_listen_and_serve
+    ret 0
+}

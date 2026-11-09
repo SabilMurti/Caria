@@ -476,6 +476,184 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
 }
 
 // ---------------------------------------------------------------------------
+// 6. SQLite Database Engine (via rusqlite)
+// ---------------------------------------------------------------------------
+use rusqlite::Connection;
+
+#[no_mangle] pub extern "C" fn caria_sqlite_open(path: *const c_char) -> i64 {
+    if path.is_null() { return 0; }
+    let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap_or(":memory:");
+    match Connection::open(p) {
+        Ok(conn) => Box::into_raw(Box::new(conn)) as i64,
+        Err(e) => {
+            set_error(format!("SQLite open error: {}", e));
+            0
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_sqlite_close(conn_id: i64) -> i64 {
+    if conn_id == 0 { return 0; }
+    unsafe {
+        let conn = Box::from_raw(conn_id as *mut Connection);
+        let _ = conn.close();
+    }
+    1
+}
+
+#[no_mangle] pub extern "C" fn caria_sqlite_exec(conn_id: i64, sql: *const c_char) -> i64 {
+    if conn_id == 0 || sql.is_null() { return 0; }
+    let s = unsafe { CStr::from_ptr(sql) }.to_str().unwrap_or("");
+    unsafe {
+        let conn = &*(conn_id as *const Connection);
+        match conn.execute(s, []) {
+            Ok(rows) => rows as i64,
+            Err(e) => {
+                set_error(format!("SQLite exec error: {}", e));
+                0
+            }
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_sqlite_query(conn_id: i64, sql: *const c_char) -> i64 {
+    if conn_id == 0 || sql.is_null() { return 0; }
+    let s = unsafe { CStr::from_ptr(sql) }.to_str().unwrap_or("");
+    unsafe {
+        let conn = &*(conn_id as *const Connection);
+        let mut stmt = match conn.prepare(s) {
+            Ok(st) => st,
+            Err(e) => {
+                set_error(format!("SQLite prepare error: {}", e));
+                return 0;
+            }
+        };
+
+        let col_names: Vec<String> = stmt.column_names().into_iter().map(|n| n.to_string()).collect();
+        let mut rows_data: Vec<serde_json::Map<String, serde_json::Value>> = Vec::new();
+
+        let mut rows = match stmt.query([]) {
+            Ok(r) => r,
+            Err(e) => {
+                set_error(format!("SQLite query error: {}", e));
+                return 0;
+            }
+        };
+
+        while let Ok(Some(row)) = rows.next() {
+            let mut row_map = serde_json::Map::new();
+            for (idx, name) in col_names.iter().enumerate() {
+                if let Ok(val) = row.get::<_, i64>(idx) {
+                    row_map.insert(name.clone(), serde_json::Value::Number(val.into()));
+                } else if let Ok(val) = row.get::<_, f64>(idx) {
+                    if let Some(n) = serde_json::Number::from_f64(val) {
+                        row_map.insert(name.clone(), serde_json::Value::Number(n));
+                    }
+                } else if let Ok(val) = row.get::<_, String>(idx) {
+                    row_map.insert(name.clone(), serde_json::Value::String(val));
+                } else {
+                    row_map.insert(name.clone(), serde_json::Value::Null);
+                }
+            }
+            rows_data.push(row_map);
+        }
+
+        let json_arr = serde_json::Value::Array(rows_data.into_iter().map(serde_json::Value::Object).collect());
+        match CString::new(json_arr.to_string()) {
+            Ok(cs) => cs.into_raw() as i64,
+            Err(_) => 0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 7. HTTP Client & Native Microserver Engine
+// ---------------------------------------------------------------------------
+use std::net::TcpListener;
+use std::io::{Read, Write};
+
+#[no_mangle] pub extern "C" fn caria_http_get(url: *const c_char) -> i64 {
+    if url.is_null() { return 0; }
+    let u = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or("");
+    match reqwest::blocking::get(u) {
+        Ok(resp) => match resp.text() {
+            Ok(body) => match CString::new(body) {
+                Ok(cs) => cs.into_raw() as i64,
+                Err(_) => 0,
+            },
+            Err(e) => {
+                set_error(format!("HTTP read error: {}", e));
+                0
+            }
+        },
+        Err(e) => {
+            set_error(format!("HTTP GET request error: {}", e));
+            0
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_http_post(url: *const c_char, body: *const c_char) -> i64 {
+    if url.is_null() { return 0; }
+    let u = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or("");
+    let b = if !body.is_null() { unsafe { CStr::from_ptr(body) }.to_str().unwrap_or("") } else { "" };
+    let client = reqwest::blocking::Client::new();
+    match client.post(u).body(b.to_string()).send() {
+        Ok(resp) => match resp.text() {
+            Ok(body_text) => match CString::new(body_text) {
+                Ok(cs) => cs.into_raw() as i64,
+                Err(_) => 0,
+            },
+            Err(e) => {
+                set_error(format!("HTTP read error: {}", e));
+                0
+            }
+        },
+        Err(e) => {
+            set_error(format!("HTTP POST request error: {}", e));
+            0
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_http_listen_and_serve(port: i64, response_body: *const c_char) -> i64 {
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            set_error(format!("Failed to bind port {}: {}", port, e));
+            return 0;
+        }
+    };
+    println!("🚀 Caria Native Backend listening on http://0.0.0.0:{}", port);
+
+    let body_str = if !response_body.is_null() {
+        unsafe { CStr::from_ptr(response_body) }.to_str().unwrap_or("OK")
+    } else {
+        "{\"status\":\"ok\",\"engine\":\"caria\"}"
+    };
+
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body_str.len(),
+        body_str
+    );
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut socket) => {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf);
+                let _ = socket.write_all(response.as_bytes());
+                let _ = socket.flush();
+            }
+            Err(_) => break,
+        }
+    }
+    1
+}
+
+// ---------------------------------------------------------------------------
 // Polymorphic Output
 // ---------------------------------------------------------------------------
 #[no_mangle] pub extern "C" fn caria_say_int(val: i64) -> i64 {

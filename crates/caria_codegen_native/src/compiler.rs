@@ -172,6 +172,17 @@ impl CariaCompiler {
         add_symbol!("caria_sleep_millis", caria_runtime::ffi_aot::caria_sleep_millis);
         add_symbol!("caria_time_now", caria_runtime::ffi_aot::caria_time_now);
         add_symbol!("caria_time_now_millis", caria_runtime::ffi_aot::caria_time_now_millis);
+
+        // Database - SQLite
+        add_symbol!("caria_sqlite_open", caria_runtime::ffi_aot::caria_sqlite_open);
+        add_symbol!("caria_sqlite_close", caria_runtime::ffi_aot::caria_sqlite_close);
+        add_symbol!("caria_sqlite_exec", caria_runtime::ffi_aot::caria_sqlite_exec);
+        add_symbol!("caria_sqlite_query", caria_runtime::ffi_aot::caria_sqlite_query);
+
+        // HTTP Client & Native Microserver Engine
+        add_symbol!("caria_http_get", caria_runtime::ffi_aot::caria_http_get);
+        add_symbol!("caria_http_post", caria_runtime::ffi_aot::caria_http_post);
+        add_symbol!("caria_http_listen_and_serve", caria_runtime::ffi_aot::caria_http_listen_and_serve);
         
         // Encoding
         add_symbol!("caria_base64_encode", caria_runtime::ffi_aot::caria_base64_encode);

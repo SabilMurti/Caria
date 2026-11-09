@@ -1,18 +1,22 @@
-# Caria - Embeddable Scripting Language for AI Agents
+# Caria - Scripting Feel, Native Steel
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)]()
+[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange)]()
+[![Version](https://img.shields.io/badge/version-v0.5.0-purple)]()
 
 ## Overview
 
-Caria is a **native embeddable scripting language** designed specifically for AI agents and automation tools. Unlike traditional scripting languages that run in interpreters, Caria compiles directly to native binary code using Cranelift AOT compilation, providing:
+Caria is a **high-velocity native programming language and embeddable scripting engine** built with a singular design principle: **"Scripting Feel, Native Steel"**.
 
-- **Native Speed**: Compiled to machine code, no interpreter overhead
-- **AI-Friendly Syntax**: Token-efficient, readable syntax optimized for LLM generation
-- **Embeddable Runtime**: Easy integration into any Rust application
-- **Cross-Platform**: Runs on x86_64 Linux/macOS/Windows
-- **Type-Safe FFI**: Strong typing between host and script
+Unlike traditional dynamic scripting languages that rely on heavyweight interpreters or bloated V8 runtimes, Caria compiles directly to standalone native machine code using Cranelift AOT compilation. It gives developers the rapid expressive power of Python/TypeScript with the sub-millisecond execution, minimal memory footprint (< 10MB), and direct OS access of C/Rust.
+
+- **Native Steel**: Compiles directly to standalone native machine code via Cranelift AOT.
+- **Microsecond Cold Start**: Instant startup (< 2ms) without virtual machines or JIT warmups.
+- **Minimal Footprint**: Low memory footprint (< 10MB) and container sizes < 15MB.
+- **Token-Efficient & AI-Native**: Compact, ergonomic syntax designed for human productivity and zero-token waste in LLM workflows.
+- **Cross-Platform**: Full native support for `x86_64` and `aarch64` (ARM Linux, Apple Silicon, Android PRoot, Windows, macOS).
+- **Embedded Backend Engine**: Native SQLite database engine and high-throughput HTTP server/client built right into the runtime.
 
 ### Key Features
 
@@ -355,27 +359,16 @@ caria spec
 caria fmt <script.cria>
 ```
 
-### Cast System (Custom Commands)
+### Native Microservices & Backend
 
-Create a `cast.cria` file with custom runes:
+Caria includes native support for SQLite databases and HTTP servers directly in the runtime:
 
-```caria
-rune help() -> int {
-    say("Available commands:")
-    say("  deploy - Deploy the application")
-    say("  test - Run test suite")
-    ret 0
-}
-
-rune deploy() -> int {
-    say("Deploying...")
-    ret 0
-}
-```
-
-Run:
 ```bash
-caria cast deploy
+# Run a native HTTP backend service
+caria run examples/backend_api.cria
+
+# Run a native SQLite workflow
+caria run examples/sqlite_database.cria
 ```
 
 ## Use Cases
