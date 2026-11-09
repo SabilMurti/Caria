@@ -448,6 +448,35 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
 }
 
 // ---------------------------------------------------------------------------
+// AI Sandboxing & Gas Metering Engine
+// ---------------------------------------------------------------------------
+use std::sync::atomic::{AtomicI64, Ordering};
+
+static CARIA_GAS_REMAINING: AtomicI64 = AtomicI64::new(-1);
+
+#[no_mangle] pub extern "C" fn caria_gas_set(gas: i64) -> i64 {
+    CARIA_GAS_REMAINING.store(gas, Ordering::SeqCst);
+    gas
+}
+
+#[no_mangle] pub extern "C" fn caria_gas_get() -> i64 {
+    CARIA_GAS_REMAINING.load(Ordering::SeqCst)
+}
+
+#[no_mangle] pub extern "C" fn caria_gas_tick(cost: i64) -> i64 {
+    let current = CARIA_GAS_REMAINING.load(Ordering::Relaxed);
+    if current < 0 {
+        return 1;
+    }
+    if current < cost {
+        eprintln!("\n🚨 [CARIA RUNTIME TRAP]: Out of Gas (instruction limit reached). Aborting safely.");
+        std::process::exit(137);
+    }
+    CARIA_GAS_REMAINING.fetch_sub(cost, Ordering::Relaxed);
+    1
+}
+
+// ---------------------------------------------------------------------------
 // Hashing & Base64
 // ---------------------------------------------------------------------------
 #[no_mangle] pub extern "C" fn caria_hash_make(data: *const c_char) -> i64 { 

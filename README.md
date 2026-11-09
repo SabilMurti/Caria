@@ -409,6 +409,55 @@ rune main() -> int {
 }
 ```
 
+### Advanced Control Flow & Pattern Matching
+
+Caria provides expressive, modern control flow primitives:
+
+```caria
+// Pattern matching with when
+status := when code {
+    200 => "OK",
+    404 => "Not Found",
+    else => "Error"
+}
+
+// Early exit guards
+guard user_id > 0 else {
+    say("Invalid user")
+    ret 1
+}
+
+// Syntactic inverse
+unless is_blocked {
+    say("Processing payload")
+}
+
+// Collection iteration
+for item in [1, 2, 3] {
+    say(item)
+}
+```
+
+### Standard Library Auto-Loader
+
+```caria
+summon std.math
+
+rune main() -> int {
+    say(abs(-42))  // 42
+    ret 0
+}
+```
+
+### AI-Agent Sandboxing & Gas Metering
+
+Prevent AI-generated infinite loops from exhausting CPU resources using instruction gas metering:
+
+```bash
+# Terminate execution safely if instructions exceed 100,000 ticks
+caria run untrusted_agent_script.cria --gas-limit 100000
+```
+
 ## Use Cases
 
 ### 1. Simple Calculator

@@ -171,6 +171,9 @@ impl CariaCompiler {
         add_symbol!("caria_env_set", caria_runtime::ffi_aot::caria_env_set);
         add_symbol!("caria_sleep_millis", caria_runtime::ffi_aot::caria_sleep_millis);
         add_symbol!("caria_spawn", caria_runtime::ffi_aot::caria_spawn);
+        add_symbol!("caria_gas_set", caria_runtime::ffi_aot::caria_gas_set);
+        add_symbol!("caria_gas_get", caria_runtime::ffi_aot::caria_gas_get);
+        add_symbol!("caria_gas_tick", caria_runtime::ffi_aot::caria_gas_tick);
         add_symbol!("caria_time_now", caria_runtime::ffi_aot::caria_time_now);
         add_symbol!("caria_time_now_millis", caria_runtime::ffi_aot::caria_time_now_millis);
 
@@ -549,6 +552,9 @@ impl CariaCompiler {
             "time_now_millis" => "caria_time_now_millis",
             "sleep_millis" => "caria_sleep_millis",
             "spawn" => "caria_spawn",
+            "gas_set" => "caria_gas_set",
+            "gas_get" => "caria_gas_get",
+            "gas_tick" => "caria_gas_tick",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
@@ -713,6 +719,8 @@ impl CariaCompiler {
                 
                 builder.switch_to_block(body_block);
                 builder.seal_block(body_block);
+                let one = builder.ins().iconst(types::I64, 1);
+                let _ = self.call_named_function("caria_gas_tick", &[one], builder);
                 for s in &ws.body {
                     self.compile_statement(s, ctx, builder)?;
                 }
@@ -754,6 +762,8 @@ impl CariaCompiler {
                 
                 builder.switch_to_block(body_block);
                 builder.seal_block(body_block);
+                let one = builder.ins().iconst(types::I64, 1);
+                let _ = self.call_named_function("caria_gas_tick", &[one], builder);
                 for s in &frs.body {
                     self.compile_statement(s, ctx, builder)?;
                 }
@@ -768,6 +778,121 @@ impl CariaCompiler {
                 
                 builder.switch_to_block(after_block);
                 builder.seal_block(after_block);
+                Ok(())
+            }
+
+            // --- Unless statement (if !cond) ---
+            caria_parser::ast::Statement::UnlessStmt(unless_stmt) => {
+                let cond = self.compile_expression(&unless_stmt.condition, ctx, builder)?;
+                
+                let body_block = builder.create_block();
+                let merge_block = builder.create_block();
+                
+                // brif cond, merge_block, body_block (execute body if cond is zero)
+                builder.ins().brif(cond, merge_block, &[], body_block, &[]);
+                
+                builder.switch_to_block(body_block);
+                builder.seal_block(body_block);
+                for s in &unless_stmt.body {
+                    self.compile_statement(s, ctx, builder)?;
+                }
+                builder.ins().jump(merge_block, &[]);
+                
+                builder.switch_to_block(merge_block);
+                builder.seal_block(merge_block);
+                Ok(())
+            }
+
+            // --- Guard statement (guard cond else { fallback }) ---
+            caria_parser::ast::Statement::GuardStmt(guard_stmt) => {
+                let cond = self.compile_expression(&guard_stmt.condition, ctx, builder)?;
+                
+                let proceed_block = builder.create_block();
+                let fallback_block = builder.create_block();
+                
+                builder.ins().brif(cond, proceed_block, &[], fallback_block, &[]);
+                
+                builder.switch_to_block(fallback_block);
+                builder.seal_block(fallback_block);
+                for s in &guard_stmt.fallback {
+                    self.compile_statement(s, ctx, builder)?;
+                }
+                builder.ins().jump(proceed_block, &[]);
+                
+                builder.switch_to_block(proceed_block);
+                builder.seal_block(proceed_block);
+                Ok(())
+            }
+
+            // --- For-in statement (for item [, idx] in collection) ---
+            caria_parser::ast::Statement::ForInStmt(for_in) => {
+                let arr_ptr = self.compile_expression(&for_in.collection, ctx, builder)?;
+                let len_val = self.call_named_function("caria_array_len", &[arr_ptr], builder)?;
+                
+                let loop_head = builder.create_block();
+                let loop_body = builder.create_block();
+                let after_block = builder.create_block();
+                
+                let zero = builder.ins().iconst(types::I64, 0);
+                let counter_var = format!("__for_idx_{}", ctx.variables.len());
+                ctx.variables.insert(counter_var.clone(), zero);
+                
+                builder.ins().jump(loop_head, &[]);
+                
+                // Loop Head: current_i < len
+                builder.switch_to_block(loop_head);
+                builder.seal_block(loop_head);
+                let current_i = ctx.variables.get(&counter_var).cloned().unwrap();
+                let cond = builder.ins().icmp(IntCC::SignedLessThan, current_i, len_val);
+                builder.ins().brif(cond, loop_body, &[], after_block, &[]);
+                
+                // Loop Body
+                builder.switch_to_block(loop_body);
+                builder.seal_block(loop_body);
+                let one = builder.ins().iconst(types::I64, 1);
+                let _ = self.call_named_function("caria_gas_tick", &[one], builder);
+
+                let item_val = self.call_named_function("caria_array_get", &[arr_ptr, current_i], builder)?;
+                ctx.variables.insert(for_in.item_var.clone(), item_val);
+                if let Some(ref idx_name) = for_in.index_var {
+                    ctx.variables.insert(idx_name.clone(), current_i);
+                }
+                
+                for s in &for_in.body {
+                    self.compile_statement(s, ctx, builder)?;
+                }
+                
+                let next_i = builder.ins().iadd(current_i, one);
+                ctx.variables.insert(counter_var.clone(), next_i);
+                builder.ins().jump(loop_head, &[]);
+                
+                builder.switch_to_block(after_block);
+                builder.seal_block(after_block);
+                Ok(())
+            }
+
+            // --- Null-assign statement (name ?= value) ---
+            caria_parser::ast::Statement::NullAssignStmt { name, value } => {
+                let current = ctx.variables.get(name).cloned();
+                let zero = builder.ins().iconst(types::I64, 0);
+                let should_assign = if let Some(cur_val) = current {
+                    builder.ins().icmp(IntCC::Equal, cur_val, zero)
+                } else {
+                    builder.ins().iconst(types::I64, 1)
+                };
+                
+                let assign_block = builder.create_block();
+                let merge_block = builder.create_block();
+                builder.ins().brif(should_assign, assign_block, &[], merge_block, &[]);
+                
+                builder.switch_to_block(assign_block);
+                builder.seal_block(assign_block);
+                let new_val = self.compile_expression(value, ctx, builder)?;
+                ctx.variables.insert(name.clone(), new_val);
+                builder.ins().jump(merge_block, &[]);
+                
+                builder.switch_to_block(merge_block);
+                builder.seal_block(merge_block);
                 Ok(())
             }
             
@@ -962,6 +1087,70 @@ impl CariaCompiler {
                 builder.switch_to_block(merge_block);
                 builder.seal_block(merge_block);
                 
+                Ok(builder.block_params(merge_block)[0])
+            }
+            
+            // --- When expression (pattern matching) ---
+            caria_parser::ast::Expression::WhenExpr { subject, arms } => {
+                let subj_val = self.compile_expression(subject, ctx, builder)?;
+                let merge_block = builder.create_block();
+                builder.append_block_param(merge_block, types::I64);
+
+                let mut next_check_block = builder.create_block();
+                builder.ins().jump(next_check_block, &[]);
+
+                for arm in arms {
+                    let current_check_block = next_check_block;
+                    builder.switch_to_block(current_check_block);
+                    builder.seal_block(current_check_block);
+
+                    let arm_body_block = builder.create_block();
+                    next_check_block = builder.create_block();
+
+                    match &arm.pattern {
+                        caria_parser::ast::WhenPattern::Wildcard => {
+                            // wildcard/else arm: unconditionally execute
+                            builder.ins().jump(arm_body_block, &[]);
+                        }
+                        caria_parser::ast::WhenPattern::Literal(lit) => {
+                            let lit_val = self.compile_literal(lit, ctx, builder)?;
+                            let cond = builder.ins().icmp(IntCC::Equal, subj_val, lit_val);
+                            builder.ins().brif(cond, arm_body_block, &[], next_check_block, &[]);
+                        }
+                        caria_parser::ast::WhenPattern::Range(start_lit, end_lit) => {
+                            let start_val = self.compile_literal(start_lit, ctx, builder)?;
+                            let end_val = self.compile_literal(end_lit, ctx, builder)?;
+                            let gte = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, subj_val, start_val);
+                            let lte = builder.ins().icmp(IntCC::SignedLessThanOrEqual, subj_val, end_val);
+                            let in_range = builder.ins().band(gte, lte);
+                            builder.ins().brif(in_range, arm_body_block, &[], next_check_block, &[]);
+                        }
+                        caria_parser::ast::WhenPattern::Identifier(name) => {
+                            if let Some(id_val) = ctx.variables.get(name).cloned() {
+                                let cond = builder.ins().icmp(IntCC::Equal, subj_val, id_val);
+                                builder.ins().brif(cond, arm_body_block, &[], next_check_block, &[]);
+                            } else {
+                                builder.ins().jump(arm_body_block, &[]);
+                            }
+                        }
+                    }
+
+                    // Compile Arm body
+                    builder.switch_to_block(arm_body_block);
+                    builder.seal_block(arm_body_block);
+                    let result_val = self.compile_expression(&arm.body, ctx, builder)?;
+                    builder.ins().jump(merge_block, &[result_val]);
+                }
+
+                // If fallthrough with no matched arm, default to 0
+                builder.switch_to_block(next_check_block);
+                builder.seal_block(next_check_block);
+                let default_val = builder.ins().iconst(types::I64, 0);
+                builder.ins().jump(merge_block, &[default_val]);
+
+                // Merge
+                builder.switch_to_block(merge_block);
+                builder.seal_block(merge_block);
                 Ok(builder.block_params(merge_block)[0])
             }
             

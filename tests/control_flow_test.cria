@@ -1,0 +1,54 @@
+// ============================================================================
+// CARIA CONTROL FLOW & PATTERN MATCHING NATIVE TEST SUITE
+// ============================================================================
+// Run with: caria test tests/control_flow_test.cria
+// ============================================================================
+
+rune test_when_matching() -> int {
+    code := 200
+    res := when code {
+        200 => 10,
+        404 => 20,
+        else => 0
+    }
+    if res == 10 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_guard_clause() -> int {
+    level := 5
+    guard level > 2 else {
+        ret 1
+    }
+    ret 0
+}
+
+rune test_unless_condition() -> int {
+    flag := 0
+    mut result := 0
+    unless flag {
+        result = 42
+    }
+    if result == 42 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_for_in_loop() -> int {
+    items := [1, 2, 3]
+    mut total := 0
+    for x in items {
+        total = total + x
+    }
+    if total == 6 {
+        ret 0
+    }
+    ret 1
+}
+
+rune main() -> int {
+    ret 0
+}

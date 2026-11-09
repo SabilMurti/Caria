@@ -1,0 +1,54 @@
+// ============================================================================
+// CARIA ADVANCED CONTROL FLOW & PATTERN MATCHING DEMO
+// ============================================================================
+// Demonstrates when expressions, guard clauses, unless statements,
+// and native for..in iteration over collections.
+// ============================================================================
+
+rune evaluate_status(code: int) -> txt {
+    status := when code {
+        200 => "HTTP 200 OK - Request Succeeded",
+        201 => "HTTP 201 Created - Resource Initialized",
+        400 => "HTTP 400 Bad Request - Invalid Payload",
+        404 => "HTTP 404 Not Found - Missing Endpoint",
+        500 => "HTTP 500 Internal Server Error",
+        else => "HTTP Unknown Status Code"
+    }
+    ret status
+}
+
+rune check_access(user_level: int) -> int {
+    guard user_level >= 3 else {
+        say("Access Denied: Insufficient privilege.")
+        ret 1
+    }
+    say("Access Granted: Welcome Admin.")
+    ret 0
+}
+
+rune main() -> int {
+    say("⚡ Initializing Caria Advanced Control Flow Suite...")
+    
+    // 1. Pattern matching with when
+    say(evaluate_status(200))
+    say(evaluate_status(404))
+    
+    // 2. Early exit with guard
+    check_access(5)
+    
+    // 3. Syntactic inverse with unless
+    is_blocked := 0
+    unless is_blocked {
+        say("Traffic is flowing smoothly (verified via unless).")
+    }
+    
+    // 4. Native for..in collection traversal
+    scores := [95, 88, 72]
+    say("Iterating through test scores:")
+    for score in scores {
+        say(score)
+    }
+    
+    say("✅ Advanced control flow executed successfully.")
+    ret 0
+}

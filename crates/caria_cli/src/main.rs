@@ -78,7 +78,18 @@ fn resolve_imports(statements: &mut Vec<Statement>, current_dir: &Path, config: 
                 let mut resolved_path = None;
                 
                 if let Some(first_part) = parts.first() {
-                    if let Some(mapped_dir) = config.autoload.get(*first_part) {
+                    if *first_part == "std" {
+                        let rest = parts[1..].join("/");
+                        let local_std = project_root.join("std").join(format!("{}.cria", rest));
+                        if local_std.exists() {
+                            resolved_path = Some(local_std);
+                        } else {
+                            let sys_std = PathBuf::from("/usr/local/lib/caria/std").join(format!("{}.cria", rest));
+                            if sys_std.exists() {
+                                resolved_path = Some(sys_std);
+                            }
+                        }
+                    } else if let Some(mapped_dir) = config.autoload.get(*first_part) {
                         let rest = parts[1..].join("/");
                         resolved_path = Some(project_root.join(mapped_dir).join(format!("{}.cria", rest)));
                     }
@@ -750,8 +761,15 @@ fn main() {
             
             let mut i = 2;
             while i < args.len() {
-                if args[i] == "--format" && i + 1 < args.len() && args[i+1] == "json" {
-                    format_json = true;
+                if args[i] == "--format" && i + 1 < args.len() {
+                    if args[i+1] == "json" || args[i+1] == "json-agent" {
+                        format_json = true;
+                    }
+                    i += 2;
+                } else if args[i] == "--gas-limit" && i + 1 < args.len() {
+                    if let Ok(limit) = args[i+1].parse::<i64>() {
+                        caria_runtime::ffi_aot::caria_gas_set(limit);
+                    }
                     i += 2;
                 } else if file.is_none() {
                     file = Some(args[i].clone());

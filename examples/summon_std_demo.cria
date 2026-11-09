@@ -1,0 +1,21 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY AUTO-LOADER DEMO
+// ============================================================================
+// Demonstrates loading pure Caria standard library modules via `summon std.*`.
+// ============================================================================
+
+summon std.math
+
+rune main() -> int {
+    say("⚡ Testing Standard Library Auto-Loader...")
+    
+    val := -42
+    result := abs(val)
+    
+    say("Original value:")
+    say(val)
+    say("Absolute value via std.math:")
+    say(result)
+    
+    ret 0
+}
