@@ -291,7 +291,10 @@ fn parse_and_check(file_path: &str, format_json: bool) -> caria_parser::ast::Pro
         Ok(prog) => {
             // [Phase A.2 Pipeline Hooks]
             if let Err(errs) = caria_semantic::analyze(&prog) {
-                eprintln!("Semantic Errors: {:?}", errs);
+                eprintln!("❌ Type/Semantic error(s) in '{}':", file_path);
+                for err in &errs {
+                    eprintln!("  • {:?}", err);
+                }
                 std::process::exit(1);
             }
             let ir_builder = caria_ir::IrBuilder::new();

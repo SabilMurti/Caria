@@ -227,7 +227,32 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 { set_error(format
 #[no_mangle] pub extern "C" fn caria_regex_split(pattern: *const c_char, input: *const c_char) -> i64 { 1 }
 #[no_mangle] pub extern "C" fn caria_regex_escape(pattern: *const c_char) -> i64 { 1 }
 
-// Basic say/print function for AOT compilation
+// Polymorphic say/print functions for AOT compilation
+#[no_mangle] pub extern "C" fn caria_say_int(val: i64) -> i64 {
+    println!("{}", val);
+    0
+}
+
+#[no_mangle] pub extern "C" fn caria_say_float(val: f64) -> i64 {
+    println!("{}", val);
+    0
+}
+
+#[no_mangle] pub extern "C" fn caria_say_bool(val: i64) -> i64 {
+    println!("{}", if val != 0 { "true" } else { "false" });
+    0
+}
+
+#[no_mangle] pub extern "C" fn caria_say_str(ptr: *const c_char) -> i64 {
+    if ptr.is_null() {
+        println!();
+        return 0;
+    }
+    let s = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or("");
+    println!("{}", s);
+    0
+}
+
 #[no_mangle] pub extern "C" fn caria_say(val: i64) -> i64 {
     println!("{}", val);
     0

@@ -1,7 +1,7 @@
 //! Native Codegen Compiler - Cranelift JIT/Object Integration v0.114
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use cranelift_module::{Module, Linkage, FuncId};
+use cranelift_module::{Module, Linkage, FuncId, DataDescription, DataId};
 use cranelift_codegen::Context;
 use cranelift_codegen::ir::{InstBuilder, AbiParam, Signature, UserFuncName};
 use cranelift_codegen::ir::types;
@@ -20,6 +20,7 @@ pub struct CariaCompiler {
     module: CariaModule,
     function_cache: HashMap<String, *const u8>,
     function_ids: HashMap<String, FuncId>,
+    string_data_ids: HashMap<String, DataId>,
 }
 
 /// Compilation context tracking variables and constants during code generation
@@ -75,6 +76,7 @@ impl CariaCompiler {
             module: CariaModule::Jit(module),
             function_cache: HashMap::new(),
             function_ids: HashMap::new(),
+            string_data_ids: HashMap::new(),
         })
     }
 
@@ -102,6 +104,7 @@ impl CariaCompiler {
             module: CariaModule::Object(module),
             function_cache: HashMap::new(),
             function_ids: HashMap::new(),
+            string_data_ids: HashMap::new(),
         })
     }
 
@@ -199,7 +202,10 @@ impl CariaCompiler {
         
         // Core I/O
         add_symbol!("caria_say", caria_runtime::ffi_aot::caria_say);
-        
+        add_symbol!("caria_say_int", caria_runtime::ffi_aot::caria_say_int);
+        add_symbol!("caria_say_float", caria_runtime::ffi_aot::caria_say_float);
+        add_symbol!("caria_say_bool", caria_runtime::ffi_aot::caria_say_bool);
+        add_symbol!("caria_say_str", caria_runtime::ffi_aot::caria_say_str);
 
         Ok(())
     }
@@ -210,15 +216,7 @@ impl CariaCompiler {
         
         // For ObjectModule, we must consume it to get the product
         // We'll temporarily replace it with a dummy JIT module
-        // CRITICAL: Use explicit baseline ISA, NOT cranelift_native::builder()
-        use target_lexicon::*;
-        let triple = Triple {
-            architecture: Architecture::X86_64,
-            vendor: Vendor::Unknown,
-            operating_system: OperatingSystem::Linux,
-            environment: Environment::Gnu,
-            binary_format: BinaryFormat::Elf,
-        };
+        let triple = Self::default_target_triple();
         
         let isa = isa::lookup(triple)
             .map_err(|e| format!("Failed to create ISA: {}", e))?
@@ -653,23 +651,30 @@ impl CariaCompiler {
             
             // --- Say statement ---
             caria_parser::ast::Statement::SayStmt(expr) => {
+                let (fn_name, abi_type) = match expr {
+                    caria_parser::ast::Expression::Literal(caria_parser::ast::Literal::Str(_)) => ("caria_say_str", types::I64),
+                    caria_parser::ast::Expression::Literal(caria_parser::ast::Literal::Float(_)) => ("caria_say_float", types::F64),
+                    caria_parser::ast::Expression::Literal(caria_parser::ast::Literal::Bool(_)) => ("caria_say_bool", types::I64),
+                    _ => ("caria_say", types::I64),
+                };
+
                 // Evaluate the expression to get the value
                 let val = self.compile_expression(expr, ctx, builder)?;
                 
-                // Declare caria_say function signature: fn(i64) -> i64
+                // Declare target say function signature
                 let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
-                sig.params.push(AbiParam::new(types::I64));
+                sig.params.push(AbiParam::new(abi_type));
                 sig.returns.push(AbiParam::new(types::I64));
                 
-                // Import caria_say as an external function
+                // Import function
                 let callee = match &mut self.module {
                     CariaModule::Jit(jit) => {
-                        jit.declare_function("caria_say", Linkage::Import, &sig)
-                            .map_err(|e| format!("Failed to declare caria_say: {}", e))?
+                        jit.declare_function(fn_name, Linkage::Import, &sig)
+                            .map_err(|e| format!("Failed to declare {}: {}", fn_name, e))?
                     }
                     CariaModule::Object(obj) => {
-                        obj.declare_function("caria_say", Linkage::Import, &sig)
-                            .map_err(|e| format!("Failed to declare caria_say: {}", e))?
+                        obj.declare_function(fn_name, Linkage::Import, &sig)
+                            .map_err(|e| format!("Failed to declare {}: {}", fn_name, e))?
                     }
                 };
                 
@@ -850,9 +855,9 @@ impl CariaCompiler {
     }
     
     fn compile_literal(
-        &self,
+        &mut self,
         lit: &caria_parser::ast::Literal,
-        ctx: &mut CompileContext,
+        _ctx: &mut CompileContext,
         builder: &mut FunctionBuilder,
     ) -> Result<cranelift_codegen::ir::Value, String> {
         match lit {
@@ -866,16 +871,45 @@ impl CariaCompiler {
                 Ok(builder.ins().iconst(types::I64, if *b { 1 } else { 0 }))
             }
             caria_parser::ast::Literal::Str(s) => {
-                // Store string in pool, return index as pointer
-                let idx = ctx.string_constants.len() as i64;
-                ctx.string_constants.push(s.clone());
-                Ok(builder.ins().iconst(types::I64, idx))
+                let data_id = if let Some(id) = self.string_data_ids.get(s) {
+                    *id
+                } else {
+                    let mut desc = DataDescription::new();
+                    let mut bytes = s.as_bytes().to_vec();
+                    bytes.push(0);
+                    desc.define(bytes.into_boxed_slice());
+                    let name = format!("str_data_{}", self.string_data_ids.len());
+                    let id = match &mut self.module {
+                        CariaModule::Jit(jit) => {
+                            let id = jit.declare_data(&name, Linkage::Local, false, false)
+                                .map_err(|e| format!("declare_data failed: {}", e))?;
+                            jit.define_data(id, &desc)
+                                .map_err(|e| format!("define_data failed: {}", e))?;
+                            id
+                        }
+                        CariaModule::Object(obj) => {
+                            let id = obj.declare_data(&name, Linkage::Local, false, false)
+                                .map_err(|e| format!("declare_data failed: {}", e))?;
+                            obj.define_data(id, &desc)
+                                .map_err(|e| format!("define_data failed: {}", e))?;
+                            id
+                        }
+                    };
+                    self.string_data_ids.insert(s.clone(), id);
+                    id
+                };
+
+                let local_data = match &mut self.module {
+                    CariaModule::Jit(jit) => jit.declare_data_in_func(data_id, builder.func),
+                    CariaModule::Object(obj) => obj.declare_data_in_func(data_id, builder.func),
+                };
+
+                Ok(builder.ins().symbol_value(types::I64, local_data))
             }
             caria_parser::ast::Literal::Nil => {
                 Ok(builder.ins().iconst(types::I64, 0))
             }
             caria_parser::ast::Literal::Unit(value, _unit) => {
-                // For MVP: just return the numeric value
                 Ok(builder.ins().iconst(types::I64, *value))
             }
         }
