@@ -1,0 +1,25 @@
+// ============================================================================
+// CARIA RECURSIVE FIBONACCI BENCHMARK
+// ============================================================================
+// Demonstrates user-defined runes, recursion, argument passing via Cranelift ABI,
+// and polymorphic output.
+// ============================================================================
+
+rune fib(n: int) -> int {
+    if n <= 1 {
+        ret n
+    }
+    ret fib(n - 1) + fib(n - 2)
+}
+
+rune main() -> int {
+    say("⚡ Calculating recursive Fibonacci in native machine code...")
+    
+    n := 12
+    res := fib(n)
+    
+    say("Fibonacci sequence result:")
+    say(res)
+    
+    ret 0
+}

@@ -371,6 +371,44 @@ caria run examples/backend_api.cria
 caria run examples/sqlite_database.cria
 ```
 
+### Native Test Suite
+
+Run unit and integration tests natively with sub-millisecond JIT execution:
+
+```bash
+caria test tests/core_suite_test.cria
+```
+
+### Recursive Runes & Function Calls
+
+```caria
+rune fib(n: int) -> int {
+    if n <= 1 {
+        ret n
+    }
+    ret fib(n - 1) + fib(n - 2)
+}
+
+rune main() -> int {
+    say(fib(10))  // 55
+    ret 0
+}
+```
+
+### Native Arrays & Maps
+
+```caria
+rune main() -> int {
+    items := [10, 20, 30]
+    say(items[0])       // 10
+    say(items.len)      // 3
+
+    meta := {"port": 8080}
+    say(meta["port"])   // 8080
+    ret 0
+}
+```
+
 ## Use Cases
 
 ### 1. Simple Calculator

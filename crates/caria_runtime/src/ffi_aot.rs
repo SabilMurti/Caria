@@ -438,6 +438,15 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
     0
 }
 
+#[no_mangle] pub extern "C" fn caria_spawn(fn_ptr: i64, arg: i64) -> i64 {
+    if fn_ptr == 0 { return 0; }
+    let f: extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(fn_ptr as usize) };
+    std::thread::spawn(move || {
+        f(arg)
+    });
+    1
+}
+
 // ---------------------------------------------------------------------------
 // Hashing & Base64
 // ---------------------------------------------------------------------------

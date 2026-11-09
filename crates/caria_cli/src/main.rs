@@ -542,6 +542,129 @@ fn cmd_doc(file_path: &str) {
     println!("Generated docs: {}", out_html);
 }
 
+fn cmd_test(target_path: &str) {
+    let mut test_files = Vec::new();
+    let target = Path::new(target_path);
+    if target.is_file() {
+        test_files.push(target.to_path_buf());
+    } else if target.is_dir() {
+        if let Ok(entries) = fs::read_dir(target) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if name.ends_with("_test.cria") || name.starts_with("test_") {
+                        test_files.push(p);
+                    }
+                }
+            }
+        }
+        let tests_dir = target.join("tests");
+        if tests_dir.exists() && tests_dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(tests_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() && p.extension().map_or(false, |ext| ext == "cria") {
+                        if !test_files.contains(&p) {
+                            test_files.push(p);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if test_files.is_empty() {
+        println!("No test files found in '{}'", target_path);
+        return;
+    }
+
+    println!("🧪 Running Caria Native Test Suite...");
+    let mut total_passed = 0;
+    let mut total_failed = 0;
+    let start_all = std::time::Instant::now();
+
+    for file in &test_files {
+        let file_str = file.to_string_lossy();
+        println!("\n  Testing {}", file_str);
+        
+        let source = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("    ✗ Failed to read {}: {}", file_str, e);
+                total_failed += 1;
+                continue;
+            }
+        };
+
+        let lexer = CariaLexer::new(&source);
+        let mut parser = Parser::new(lexer);
+        let mut program = match parser.parse_program() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("    ✗ Syntax Error in {}: {:?}", file_str, e);
+                total_failed += 1;
+                continue;
+            }
+        };
+
+        let base_dir = file.parent().unwrap_or(Path::new("."));
+        let config = parse_config(file.to_str().unwrap_or(""));
+        let mut visited = std::collections::HashSet::new();
+        let _ = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited);
+
+        // Find test runes: runes starting with test_
+        let mut test_runes = Vec::new();
+        for stmt in &program.statements {
+            if let caria_parser::ast::Statement::RuneDecl(r) = stmt {
+                if r.name.starts_with("test_") {
+                    test_runes.push(r.name.clone());
+                }
+            }
+        }
+
+        if test_runes.is_empty() {
+            for stmt in &program.statements {
+                if let caria_parser::ast::Statement::RuneDecl(r) = stmt {
+                    if r.name == "main" {
+                        test_runes.push("main".to_string());
+                    }
+                }
+            }
+        }
+
+        for test_name in test_runes {
+            let t_start = std::time::Instant::now();
+            match caria_codegen_native::NativeCompiler::compile_and_get_function(&program, &test_name) {
+                Ok(fn_ptr) => {
+                    let exit_code = fn_ptr();
+                    let elapsed = t_start.elapsed();
+                    if exit_code == 0 {
+                        println!("    ✓ {} ({:.2?})", test_name, elapsed);
+                        total_passed += 1;
+                    } else {
+                        println!("    ✗ {} (failed with exit code {}, {:.2?})", test_name, exit_code, elapsed);
+                        total_failed += 1;
+                    }
+                }
+                Err(e) => {
+                    println!("    ✗ {} (compilation error: {})", test_name, e);
+                    total_failed += 1;
+                }
+            }
+        }
+    }
+
+    let elapsed_total = start_all.elapsed();
+    println!("\n=======================================================");
+    if total_failed == 0 {
+        println!("✅ Test result: OK. {} passed; {} failed (in {:.2?})", total_passed, total_failed, elapsed_total);
+    } else {
+        println!("❌ Test result: FAILED. {} passed; {} failed (in {:.2?})", total_passed, total_failed, elapsed_total);
+        std::process::exit(1);
+    }
+}
+
 fn cmd_spec() {
     let spec = r#"Caria Programming Language Specification (v0.5.0)
  - Language Name: Caria
@@ -569,6 +692,7 @@ fn main() {
         println!("Usage:");
         println!("  caria run <file.cria> [args]         Compile and run natively (JIT)");
         println!("  caria build <file.cria> [--wasm]     Compile to native executable or WASM");
+        println!("  caria test [path]                    Run native test suite");
         println!("  caria dev [file.cria]                Start live file watcher and re-run on save");
         println!("  caria repl                           Start interactive REPL shell");
         println!("  caria fmt <file.cria>                Format Caria source file");
@@ -669,6 +793,14 @@ fn main() {
                 std::process::exit(1);
             }
             cmd_fmt(&args[2]);
+        }
+        "test" => {
+            let target_path = if args.len() >= 3 {
+                args[2].clone()
+            } else {
+                ".".to_string()
+            };
+            cmd_test(&target_path);
         }
         "mcp" => {
             cmd_mcp();

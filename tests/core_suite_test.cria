@@ -1,0 +1,45 @@
+// ============================================================================
+// CARIA CORE NATIVE TEST SUITE
+// ============================================================================
+// Run with: caria test tests/core_suite_test.cria
+// ============================================================================
+
+rune helper_add(a: int, b: int) -> int {
+    ret a + b
+}
+
+rune helper_fib(n: int) -> int {
+    if n <= 1 {
+        ret n
+    }
+    ret helper_fib(n - 1) + helper_fib(n - 2)
+}
+
+rune test_arithmetic() -> int {
+    sum := helper_add(25, 17)
+    if sum == 42 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_fibonacci() -> int {
+    // fib(8) should equal 21
+    val := helper_fib(8)
+    if val == 21 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_collections() -> int {
+    arr := [100, 200, 300]
+    if arr[1] == 200 {
+        ret 0
+    }
+    ret 1
+}
+
+rune main() -> int {
+    ret 0
+}

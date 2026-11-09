@@ -1,0 +1,33 @@
+// ============================================================================
+// CARIA COLLECTIONS (ARRAY & MAP) DEMO
+// ============================================================================
+// Demonstrates native vector and hashmap literals, indexing, and runtime FFI.
+// ============================================================================
+
+rune main() -> int {
+    say("⚡ Initializing Caria Native Collections...")
+    
+    // Array literals and element access
+    numbers := [10, 20, 30, 40, 50]
+    first := numbers[0]
+    second := numbers[1]
+    
+    say("Array elements:")
+    say(first)
+    say(second)
+    
+    // Array length inspection
+    count := numbers.len
+    say("Total elements:")
+    say(count)
+    
+    // Map literals and string key access
+    config := {"port": 8080, "timeout": 30}
+    port := config["port"]
+    
+    say("Configuration port:")
+    say(port)
+    
+    say("✅ Collections demo executed successfully.")
+    ret 0
+}

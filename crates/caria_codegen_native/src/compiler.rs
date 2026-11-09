@@ -170,6 +170,7 @@ impl CariaCompiler {
         add_symbol!("caria_env_get", caria_runtime::ffi_aot::caria_env_get);
         add_symbol!("caria_env_set", caria_runtime::ffi_aot::caria_env_set);
         add_symbol!("caria_sleep_millis", caria_runtime::ffi_aot::caria_sleep_millis);
+        add_symbol!("caria_spawn", caria_runtime::ffi_aot::caria_spawn);
         add_symbol!("caria_time_now", caria_runtime::ffi_aot::caria_time_now);
         add_symbol!("caria_time_now_millis", caria_runtime::ffi_aot::caria_time_now_millis);
 
@@ -249,14 +250,7 @@ impl CariaCompiler {
         
         // For ObjectModule, we must consume it to get the product
         let isa = {
-            use target_lexicon::*;
-            let triple = Triple {
-                architecture: Architecture::X86_64,
-                vendor: Vendor::Unknown,
-                operating_system: OperatingSystem::Linux,
-                environment: Environment::Gnu,
-                binary_format: BinaryFormat::Elf,
-            };
+            let triple = Self::default_target_triple();
             
             let mut flag_builder = cranelift_codegen::settings::builder();
             flag_builder.set("use_colocated_libcalls", "false").map_err(|e| e.to_string())?;
@@ -336,10 +330,28 @@ impl CariaCompiler {
     }
     
     fn compile_program(&mut self, prog: &caria_parser::ast::Program) -> Result<(), String> {
-        // Extract all function declarations (runes) from the program
+        // Pass 1: Declare all functions (runes) first so forward references, recursion, and inter-rune calls resolve
         for stmt in &prog.statements {
             if let caria_parser::ast::Statement::RuneDecl(rune) = stmt {
-                self.compile_rune(rune)?;
+                let sig = self.create_signature(rune)?;
+                let func_id = match &mut self.module {
+                    CariaModule::Jit(jit) => {
+                        jit.declare_function(&rune.name, Linkage::Export, &sig)
+                            .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
+                    }
+                    CariaModule::Object(obj) => {
+                        obj.declare_function(&rune.name, Linkage::Export, &sig)
+                            .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
+                    }
+                };
+                self.function_ids.insert(rune.name.clone(), func_id);
+            }
+        }
+
+        // Pass 2: Compile each function's body
+        for stmt in &prog.statements {
+            if let caria_parser::ast::Statement::RuneDecl(rune) = stmt {
+                self.compile_rune_body(rune)?;
             }
         }
         
@@ -356,26 +368,11 @@ impl CariaCompiler {
         Ok(())
     }
     
-    fn compile_rune(&mut self, rune: &caria_parser::ast::RuneDecl) -> Result<(), String> {
-        // Create function signature
+    fn compile_rune_body(&mut self, rune: &caria_parser::ast::RuneDecl) -> Result<(), String> {
+        let func_id = *self.function_ids.get(&rune.name)
+            .ok_or_else(|| format!("Undeclared function: {}", rune.name))?;
         let sig = self.create_signature(rune)?;
         
-        // Declare the function in the module
-        let func_id = match &mut self.module {
-            CariaModule::Jit(jit) => {
-                jit.declare_function(&rune.name, Linkage::Export, &sig)
-                    .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
-            }
-            CariaModule::Object(obj) => {
-                obj.declare_function(&rune.name, Linkage::Export, &sig)
-                    .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
-            }
-        };
-        
-        // Store the function ID for later lookup
-        self.function_ids.insert(rune.name.clone(), func_id);
-        
-        // Define the function body
         let mut ctx = Context::new();
         ctx.func.signature = sig;
         ctx.func.name = UserFuncName::user(0, func_id.as_u32());
@@ -389,48 +386,49 @@ impl CariaCompiler {
             builder.switch_to_block(entry_block);
             builder.seal_block(entry_block);
             
-            // Compile function body - extract statements from RuneBody
-            let statements = match &rune.body {
-                caria_parser::ast::RuneBody::Block(stmts) => stmts,
-                caria_parser::ast::RuneBody::Inline(expr) => {
-                    // For inline runes, evaluate expression and return it
-                    let mut compile_ctx = CompileContext {
-                        variables: HashMap::new(),
-                        string_constants: Vec::new(),
-                    };
-                    
-                    match self.compile_expression(expr, &mut compile_ctx, &mut builder) {
-                        Ok(val) => {
-                            // Convert I64 to I32 for return (signature expects I32)
-                            let ret_val = builder.ins().ireduce(types::I32, val);
-                            builder.ins().return_(&[ret_val]);
-                            builder.finalize();
-                            return Ok(());
-                        }
-                        Err(e) => return Err(format!("Failed to compile inline expression: {}", e)),
-                    }
-                }
-            };
-            
             let mut compile_ctx = CompileContext {
                 variables: HashMap::new(),
                 string_constants: Vec::new(),
             };
-            
-            // Compile each statement in the function body
-            let mut has_return = false;
-            for stmt in statements {
-                if matches!(stmt, caria_parser::ast::Statement::RetStmt(_)) {
-                    has_return = true;
+
+            // Map function parameters from Cranelift block arguments to local variables
+            let block_params = builder.block_params(entry_block);
+            for (idx, param) in rune.params.iter().enumerate() {
+                if idx < block_params.len() {
+                    compile_ctx.variables.insert(param.name.clone(), block_params[idx]);
                 }
-                self.compile_statement(stmt, &mut compile_ctx, &mut builder)?;
             }
             
-            // If no explicit return, add implicit return 0
-            if !has_return {
-                let zero = builder.ins().iconst(types::I32, 0);
-                builder.ins().return_(&[zero]);
-            }
+            // Compile function body - extract statements from RuneBody
+            match &rune.body {
+                caria_parser::ast::RuneBody::Block(statements) => {
+                    let mut has_return = false;
+                    for stmt in statements {
+                        if matches!(stmt, caria_parser::ast::Statement::RetStmt(_)) {
+                            has_return = true;
+                        }
+                        self.compile_statement(stmt, &mut compile_ctx, &mut builder)?;
+                    }
+                    if !has_return {
+                        if builder.func.signature.returns.first().map(|r| r.value_type) == Some(types::I32) {
+                            let zero = builder.ins().iconst(types::I32, 0);
+                            builder.ins().return_(&[zero]);
+                        } else {
+                            let zero = builder.ins().iconst(types::I64, 0);
+                            builder.ins().return_(&[zero]);
+                        }
+                    }
+                }
+                caria_parser::ast::RuneBody::Inline(expr) => {
+                    let val = self.compile_expression(expr, &mut compile_ctx, &mut builder)?;
+                    if builder.func.signature.returns.first().map(|r| r.value_type) == Some(types::I32) {
+                        let ret_val = builder.ins().ireduce(types::I32, val);
+                        builder.ins().return_(&[ret_val]);
+                    } else {
+                        builder.ins().return_(&[val]);
+                    }
+                }
+            };
             
             builder.finalize();
         }
@@ -451,7 +449,6 @@ impl CariaCompiler {
     }
     
     fn create_signature(&self, rune: &caria_parser::ast::RuneDecl) -> Result<Signature, String> {
-        let _ptr_type = self.get_pointer_type();
         let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
         
         // Add parameters
@@ -459,10 +456,134 @@ impl CariaCompiler {
             sig.params.push(AbiParam::new(types::I64));
         }
         
-        // Add return type (default to i32 for now)
-        sig.returns.push(AbiParam::new(types::I32));
+        // Add return type: i32 for main (POSIX exit code), i64 for general runes
+        if rune.name == "main" {
+            sig.returns.push(AbiParam::new(types::I32));
+        } else {
+            sig.returns.push(AbiParam::new(types::I64));
+        }
         
         Ok(sig)
+    }
+
+    pub fn call_named_function(
+        &mut self,
+        name: &str,
+        arg_vals: &[cranelift_codegen::ir::Value],
+        builder: &mut FunctionBuilder,
+    ) -> Result<cranelift_codegen::ir::Value, String> {
+        // 1. Check if user-defined rune
+        if let Some(&func_id) = self.function_ids.get(name) {
+            let local_callee = match &mut self.module {
+                CariaModule::Jit(jit) => jit.declare_func_in_func(func_id, builder.func),
+                CariaModule::Object(obj) => obj.declare_func_in_func(func_id, builder.func),
+            };
+            let call_inst = builder.ins().call(local_callee, arg_vals);
+            let results = builder.inst_results(call_inst);
+            return Ok(if results.is_empty() {
+                builder.ins().iconst(types::I64, 0)
+            } else {
+                let res = results[0];
+                if builder.func.dfg.value_type(res) == types::I32 {
+                    builder.ins().uextend(types::I64, res)
+                } else {
+                    res
+                }
+            });
+        }
+
+        // 2. FFI or Runtime standard library function mapping
+        let target_symbol = match name {
+            // Math
+            "abs" | "math_abs" => "caria_math_abs",
+            "min" | "math_min" => "caria_math_min",
+            "max" | "math_max" => "caria_math_max",
+            "pow" | "math_pow" => "caria_math_pow",
+            "sqrt" | "math_sqrt" => "caria_math_sqrt",
+            "random" | "math_random" => "caria_math_random",
+            // Array / Collections
+            "array_alloc" => "caria_array_alloc",
+            "array_push" => "caria_array_push",
+            "array_pop" => "caria_array_pop",
+            "array_len" => "caria_array_len",
+            "array_get" => "caria_array_get",
+            "array_set" => "caria_array_set",
+            "array_free" => "caria_array_free",
+            // Map
+            "map_alloc" => "caria_map_alloc",
+            "map_set" => "caria_map_set",
+            "map_get" => "caria_map_get",
+            "map_has" => "caria_map_has",
+            "map_len" => "caria_map_len",
+            "map_free" => "caria_map_free",
+            // String
+            "str_concat" | "concat" => "caria_string_concat",
+            "str_len" | "len" => "caria_string_len",
+            "str_split" | "split" => "caria_string_split",
+            "str_trim" | "trim" => "caria_string_trim",
+            "str_lower" | "lower" => "caria_string_lower",
+            "str_upper" | "upper" => "caria_string_upper",
+            "str_contains" | "contains" => "caria_string_contains",
+            "str_substring" | "substring" => "caria_string_substring",
+            "str_replace" | "replace" => "caria_string_replace_all",
+            // JSON
+            "json_parse" => "caria_json_parse",
+            "json_stringify" => "caria_json_stringify",
+            "json_get" => "caria_json_get",
+            // Database (SQLite)
+            "db_open" => "caria_sqlite_open",
+            "db_close" => "caria_sqlite_close",
+            "db_exec" => "caria_sqlite_exec",
+            "db_query" => "caria_sqlite_query",
+            // HTTP
+            "http_get" => "caria_http_get",
+            "http_post" => "caria_http_post",
+            "http_serve" => "caria_http_listen_and_serve",
+            // I/O & OS
+            "file_read" => "caria_file_read",
+            "file_write" => "caria_file_write",
+            "file_exists" => "caria_file_exists",
+            "env_get" => "caria_env_get",
+            "env_set" => "caria_env_set",
+            "time_now" => "caria_time_now",
+            "time_now_millis" => "caria_time_now_millis",
+            "sleep_millis" => "caria_sleep_millis",
+            "spawn" => "caria_spawn",
+            // Output
+            "say" => "caria_say",
+            "say_str" => "caria_say_str",
+            "say_int" => "caria_say_int",
+            "say_bool" => "caria_say_bool",
+            "say_float" => "caria_say_float",
+            other => other,
+        };
+
+        // Create standard C FFI signature (all i64 params, i64 return)
+        let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
+        for _ in 0..arg_vals.len() {
+            sig.params.push(AbiParam::new(types::I64));
+        }
+        sig.returns.push(AbiParam::new(types::I64));
+
+        let callee = match &mut self.module {
+            CariaModule::Jit(jit) => jit.declare_function(target_symbol, Linkage::Import, &sig)
+                .map_err(|e| format!("Failed to declare FFI function '{}': {}", target_symbol, e))?,
+            CariaModule::Object(obj) => obj.declare_function(target_symbol, Linkage::Import, &sig)
+                .map_err(|e| format!("Failed to declare FFI function '{}': {}", target_symbol, e))?,
+        };
+
+        let local_callee = match &mut self.module {
+            CariaModule::Jit(jit) => jit.declare_func_in_func(callee, builder.func),
+            CariaModule::Object(obj) => obj.declare_func_in_func(callee, builder.func),
+        };
+
+        let call_inst = builder.ins().call(local_callee, arg_vals);
+        let results = builder.inst_results(call_inst);
+        Ok(if results.is_empty() {
+            builder.ins().iconst(types::I64, 0)
+        } else {
+            results[0]
+        })
     }
     
     fn get_pointer_type(&self) -> cranelift_codegen::ir::Type {
@@ -534,9 +655,12 @@ impl CariaCompiler {
             // --- Return ---
             caria_parser::ast::Statement::RetStmt(expr) => {
                 let val = self.compile_expression(expr, ctx, builder)?;
-                // Convert I64 to I32 for return (signature expects I32)
-                let ret_val = builder.ins().ireduce(types::I32, val);
-                builder.ins().return_(&[ret_val]);
+                if builder.func.signature.returns.first().map(|r| r.value_type) == Some(types::I32) {
+                    let ret_val = builder.ins().ireduce(types::I32, val);
+                    builder.ins().return_(&[ret_val]);
+                } else {
+                    builder.ins().return_(&[val]);
+                }
                 Ok(())
             }
             
@@ -723,7 +847,18 @@ impl CariaCompiler {
                 
                 use caria_parser::ast::BinaryOp;
                 match op {
-                    BinaryOp::Add => Ok(builder.ins().iadd(left_val, right_val)),
+                    BinaryOp::Add => {
+                        let is_string_add = match (&**left, &**right) {
+                            (caria_parser::ast::Expression::Literal(caria_parser::ast::Literal::Str(_)), _) => true,
+                            (_, caria_parser::ast::Expression::Literal(caria_parser::ast::Literal::Str(_))) => true,
+                            _ => false,
+                        };
+                        if is_string_add {
+                            self.call_named_function("caria_string_concat", &[left_val, right_val], builder)
+                        } else {
+                            Ok(builder.ins().iadd(left_val, right_val))
+                        }
+                    }
                     BinaryOp::Subtract => Ok(builder.ins().isub(left_val, right_val)),
                     BinaryOp::Multiply => Ok(builder.ins().imul(left_val, right_val)),
                     BinaryOp::Divide => Ok(builder.ins().sdiv(left_val, right_val)),
@@ -830,21 +965,82 @@ impl CariaCompiler {
                 Ok(builder.block_params(merge_block)[0])
             }
             
-            // --- Array/Map literals (simplified) ---
-            caria_parser::ast::Expression::ArrayLiteral(_) => {
-                // For MVP: return 0 (no real array support yet)
-                Ok(builder.ins().iconst(types::I64, 0))
+            // --- Array literals ---
+            caria_parser::ast::Expression::ArrayLiteral(elements) => {
+                let cap = builder.ins().iconst(types::I64, elements.len() as i64);
+                let arr_ptr = self.call_named_function("caria_array_alloc", &[cap], builder)?;
+                for el in elements {
+                    let el_val = self.compile_expression(el, ctx, builder)?;
+                    self.call_named_function("caria_array_push", &[arr_ptr, el_val], builder)?;
+                }
+                Ok(arr_ptr)
             }
             
-            caria_parser::ast::Expression::MapLiteral(_) => {
-                // For MVP: return 0 (no real map support yet)
-                Ok(builder.ins().iconst(types::I64, 0))
+            // --- Map literals ---
+            caria_parser::ast::Expression::MapLiteral(entries) => {
+                let map_ptr = self.call_named_function("caria_map_alloc", &[], builder)?;
+                for (k, v) in entries {
+                    let k_val = self.compile_expression(k, ctx, builder)?;
+                    let v_val = self.compile_expression(v, ctx, builder)?;
+                    self.call_named_function("caria_map_set", &[map_ptr, k_val, v_val], builder)?;
+                }
+                Ok(map_ptr)
             }
-            
+
+            // --- Index access: arr[i] or map[key] ---
+            caria_parser::ast::Expression::IndexExpr { object, index } => {
+                let obj_val = self.compile_expression(object, ctx, builder)?;
+                let idx_val = self.compile_expression(index, ctx, builder)?;
+                match &**index {
+                    caria_parser::ast::Expression::Literal(caria_parser::ast::Literal::Str(_)) => {
+                        self.call_named_function("caria_map_get", &[obj_val, idx_val], builder)
+                    }
+                    _ => {
+                        self.call_named_function("caria_array_get", &[obj_val, idx_val], builder)
+                    }
+                }
+            }
+
+            // --- Member access: obj.field or arr.len ---
+            caria_parser::ast::Expression::MemberAccess { object, member, .. } => {
+                let obj_val = self.compile_expression(object, ctx, builder)?;
+                if member == "len" || member == "length" {
+                    self.call_named_function("caria_array_len", &[obj_val], builder)
+                } else {
+                    let key_val = self.compile_literal(&caria_parser::ast::Literal::Str(member.clone()), ctx, builder)?;
+                    self.call_named_function("caria_map_get", &[obj_val, key_val], builder)
+                }
+            }
+
             // --- Function calls ---
-            caria_parser::ast::Expression::CallExpr { callee: _, args: _ } => {
-                // For MVP: function calls not yet supported
-                Err("Function calls not yet implemented".into())
+            caria_parser::ast::Expression::CallExpr { callee, args } => {
+                let mut arg_vals = Vec::new();
+                for arg in args {
+                    arg_vals.push(self.compile_expression(arg, ctx, builder)?);
+                }
+                
+                if let caria_parser::ast::Expression::Identifier(ref name) = **callee {
+                    self.call_named_function(name, &arg_vals, builder)
+                } else {
+                    Err("Dynamic expression callees not supported".into())
+                }
+            }
+
+            // --- Pipe: a |> b ---
+            caria_parser::ast::Expression::PipeExpr { left, right } => {
+                let left_val = self.compile_expression(left, ctx, builder)?;
+                if let caria_parser::ast::Expression::Identifier(ref fn_name) = **right {
+                    self.call_named_function(fn_name, &[left_val], builder)
+                } else {
+                    Err("Pipe target must be a callable identifier".into())
+                }
+            }
+
+            // --- EnvExpr: env("KEY") ---
+            caria_parser::ast::Expression::EnvExpr(key) => {
+                let key_lit = caria_parser::ast::Literal::Str(key.clone());
+                let key_val = self.compile_literal(&key_lit, ctx, builder)?;
+                self.call_named_function("caria_env_get", &[key_val], builder)
             }
             
             // --- Unsupported expressions ---
