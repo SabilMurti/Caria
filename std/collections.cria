@@ -1,0 +1,21 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - COLLECTIONS
+// ============================================================================
+
+rune range(start: int, stop: int) -> [int] {
+    items := []
+    i := start
+    while i < stop {
+        i = i + 1
+    }
+    ret items
+}
+
+rune contains_int(arr: [int], target: int) -> flag {
+    for item in arr {
+        if item == target {
+            ret true
+        }
+    }
+    ret false
+}

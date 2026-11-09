@@ -1,0 +1,47 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - MATH
+// ============================================================================
+
+rune abs(n: int) -> int {
+    if n < 0 {
+        ret -n
+    }
+    ret n
+}
+
+rune min(a: int, b: int) -> int {
+    if a < b {
+        ret a
+    }
+    ret b
+}
+
+rune max(a: int, b: int) -> int {
+    if a > b {
+        ret a
+    }
+    ret b
+}
+
+rune clamp(val: int, low: int, high: int) -> int {
+    if val < low {
+        ret low
+    }
+    if val > high {
+        ret high
+    }
+    ret val
+}
+
+rune pow(base: int, exp: int) -> int {
+    if exp <= 0 {
+        ret 1
+    }
+    res := 1
+    i := 0
+    while i < exp {
+        res = res * base
+        i = i + 1
+    }
+    ret res
+}

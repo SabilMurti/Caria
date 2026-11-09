@@ -116,39 +116,41 @@ impl CariaCompiler {
             }};
         }
 
+        // Math operations
+        add_symbol!("caria_math_abs", caria_runtime::ffi_aot::caria_math_abs);
+        add_symbol!("caria_math_min", caria_runtime::ffi_aot::caria_math_min);
+        add_symbol!("caria_math_max", caria_runtime::ffi_aot::caria_math_max);
+        add_symbol!("caria_math_pow", caria_runtime::ffi_aot::caria_math_pow);
+        add_symbol!("caria_math_sqrt", caria_runtime::ffi_aot::caria_math_sqrt);
+        add_symbol!("caria_math_random", caria_runtime::ffi_aot::caria_math_random);
+
         // Core runtime functions
         add_symbol!("caria_last_error", caria_runtime::ffi_aot::caria_last_error);
-        add_symbol!("caria_obj_alloc", caria_runtime::ffi_aot::caria_obj_alloc);
-        add_symbol!("caria_obj_free", caria_runtime::ffi_aot::caria_obj_free);
         add_symbol!("caria_array_alloc", caria_runtime::ffi_aot::caria_array_alloc);
+        add_symbol!("caria_array_push", caria_runtime::ffi_aot::caria_array_push);
+        add_symbol!("caria_array_pop", caria_runtime::ffi_aot::caria_array_pop);
+        add_symbol!("caria_array_len", caria_runtime::ffi_aot::caria_array_len);
+        add_symbol!("caria_array_get", caria_runtime::ffi_aot::caria_array_get);
+        add_symbol!("caria_array_set", caria_runtime::ffi_aot::caria_array_set);
         add_symbol!("caria_array_free", caria_runtime::ffi_aot::caria_array_free);
-        add_symbol!("caria_closure_alloc", caria_runtime::ffi_aot::caria_closure_alloc);
+        add_symbol!("caria_map_alloc", caria_runtime::ffi_aot::caria_map_alloc);
+        add_symbol!("caria_map_set", caria_runtime::ffi_aot::caria_map_set);
+        add_symbol!("caria_map_get", caria_runtime::ffi_aot::caria_map_get);
+        add_symbol!("caria_map_has", caria_runtime::ffi_aot::caria_map_has);
+        add_symbol!("caria_map_len", caria_runtime::ffi_aot::caria_map_len);
+        add_symbol!("caria_map_free", caria_runtime::ffi_aot::caria_map_free);
         
         // Hash and crypto
         add_symbol!("caria_hash_make", caria_runtime::ffi_aot::caria_hash_make);
-        add_symbol!("caria_hash_check", caria_runtime::ffi_aot::caria_hash_check);
-        add_symbol!("caria_hmac_sign", caria_runtime::ffi_aot::caria_hmac_sign);
-        add_symbol!("caria_crypto_random", caria_runtime::ffi_aot::caria_crypto_random);
-        add_symbol!("caria_crypto_random_bytes", caria_runtime::ffi_aot::caria_crypto_random_bytes);
         
         // JSON
         add_symbol!("caria_json_parse", caria_runtime::ffi_aot::caria_json_parse);
         add_symbol!("caria_json_stringify", caria_runtime::ffi_aot::caria_json_stringify);
-        
-        // Database - MySQL
-        add_symbol!("caria_mysql_connect", caria_runtime::ffi_aot::caria_mysql_connect);
-        add_symbol!("caria_mysql_query", caria_runtime::ffi_aot::caria_mysql_query);
-        add_symbol!("caria_mysql_exec_params", caria_runtime::ffi_aot::caria_mysql_exec_params);
-        
-        // Database - SQLite
-        add_symbol!("caria_sqlite_open", caria_runtime::ffi_aot::caria_sqlite_open);
-        add_symbol!("caria_sqlite_close", caria_runtime::ffi_aot::caria_sqlite_close);
-        add_symbol!("caria_sqlite_query", caria_runtime::ffi_aot::caria_sqlite_query);
-        add_symbol!("caria_sqlite_exec", caria_runtime::ffi_aot::caria_sqlite_exec);
-        add_symbol!("caria_sqlite_prepared_exec", caria_runtime::ffi_aot::caria_sqlite_prepared_exec);
-        add_symbol!("caria_sqlite_date", caria_runtime::ffi_aot::caria_sqlite_date);
+        add_symbol!("caria_json_get", caria_runtime::ffi_aot::caria_json_get);
         
         // String operations
+        add_symbol!("caria_string_concat", caria_runtime::ffi_aot::caria_string_concat);
+        add_symbol!("caria_string_len", caria_runtime::ffi_aot::caria_string_len);
         add_symbol!("caria_string_split", caria_runtime::ffi_aot::caria_string_split);
         add_symbol!("caria_string_trim", caria_runtime::ffi_aot::caria_string_trim);
         add_symbol!("caria_string_trim_left", caria_runtime::ffi_aot::caria_string_trim_left);
@@ -159,32 +161,17 @@ impl CariaCompiler {
         add_symbol!("caria_string_indexof", caria_runtime::ffi_aot::caria_string_indexof);
         add_symbol!("caria_string_lastindexof", caria_runtime::ffi_aot::caria_string_lastindexof);
         add_symbol!("caria_string_substring", caria_runtime::ffi_aot::caria_string_substring);
-        add_symbol!("caria_string_replace_first", caria_runtime::ffi_aot::caria_string_replace_first);
         add_symbol!("caria_string_replace_all", caria_runtime::ffi_aot::caria_string_replace_all);
-        add_symbol!("caria_string_replace_regex", caria_runtime::ffi_aot::caria_string_replace_regex);
-        add_symbol!("caria_string_escape", caria_runtime::ffi_aot::caria_string_escape);
-        add_symbol!("caria_string_unescape", caria_runtime::ffi_aot::caria_string_unescape);
-        add_symbol!("caria_string_format", caria_runtime::ffi_aot::caria_string_format);
         
-        // Time
+        // I/O & OS
+        add_symbol!("caria_file_read", caria_runtime::ffi_aot::caria_file_read);
+        add_symbol!("caria_file_write", caria_runtime::ffi_aot::caria_file_write);
+        add_symbol!("caria_file_exists", caria_runtime::ffi_aot::caria_file_exists);
+        add_symbol!("caria_env_get", caria_runtime::ffi_aot::caria_env_get);
+        add_symbol!("caria_env_set", caria_runtime::ffi_aot::caria_env_set);
+        add_symbol!("caria_sleep_millis", caria_runtime::ffi_aot::caria_sleep_millis);
         add_symbol!("caria_time_now", caria_runtime::ffi_aot::caria_time_now);
         add_symbol!("caria_time_now_millis", caria_runtime::ffi_aot::caria_time_now_millis);
-        
-        // Crypto operations
-        add_symbol!("caria_crypt_encrypt", caria_runtime::ffi_aot::caria_crypt_encrypt);
-        add_symbol!("caria_crypt_decrypt", caria_runtime::ffi_aot::caria_crypt_decrypt);
-        add_symbol!("caria_crypto_ed25519_generate_keypair", caria_runtime::ffi_aot::caria_crypto_ed25519_generate_keypair);
-        add_symbol!("caria_crypto_ed25519_sign", caria_runtime::ffi_aot::caria_crypto_ed25519_sign);
-        add_symbol!("caria_crypto_ed25519_verify", caria_runtime::ffi_aot::caria_crypto_ed25519_verify);
-        add_symbol!("caria_crypto_ed25519_derive", caria_runtime::ffi_aot::caria_crypto_ed25519_derive);
-        add_symbol!("caria_crypto_ed25519_import_raw", caria_runtime::ffi_aot::caria_crypto_ed25519_import_raw);
-        add_symbol!("caria_crypto_rsa_generate_keypair", caria_runtime::ffi_aot::caria_crypto_rsa_generate_keypair);
-        add_symbol!("caria_crypto_rsa_encrypt", caria_runtime::ffi_aot::caria_crypto_rsa_encrypt);
-        add_symbol!("caria_crypto_rsa_decrypt", caria_runtime::ffi_aot::caria_crypto_rsa_decrypt);
-        add_symbol!("caria_crypto_rsa_sign", caria_runtime::ffi_aot::caria_crypto_rsa_sign);
-        add_symbol!("caria_crypto_rsa_verify", caria_runtime::ffi_aot::caria_crypto_rsa_verify);
-        add_symbol!("caria_aes_encrypt_iv", caria_runtime::ffi_aot::caria_aes_encrypt_iv);
-        add_symbol!("caria_aes_decrypt_iv", caria_runtime::ffi_aot::caria_aes_decrypt_iv);
         
         // Encoding
         add_symbol!("caria_base64_encode", caria_runtime::ffi_aot::caria_base64_encode);

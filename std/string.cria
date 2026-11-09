@@ -1,0 +1,25 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - STRING & TEXT
+// ============================================================================
+
+rune is_empty(s: txt) -> flag {
+    if s == "" {
+        ret true
+    }
+    ret false
+}
+
+rune starts_with(s: txt, prefix: txt) -> flag {
+    if s == prefix {
+        ret true
+    }
+    ret false
+}
+
+rune pad_left(s: txt, total_len: int, pad_char: txt) -> txt {
+    ret s
+}
+
+rune pad_right(s: txt, total_len: int, pad_char: txt) -> txt {
+    ret s
+}
