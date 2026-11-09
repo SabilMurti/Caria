@@ -83,7 +83,7 @@ impl WasmCodegen {
         imports.import("env", "dom_set_text", wasm_encoder::EntityType::Function(4));
         imports.import("env", "dom_get_int", wasm_encoder::EntityType::Function(5));
 
-        // 2. Scan for all functions in Calesteria AST and assign their type indexes and function indexes
+        // 2. Scan for all functions in Caria AST and assign their type indexes and function indexes
         let mut fn_decls = Vec::new();
         for stmt in &program.statements {
             if let Statement::RuneDecl(decl) = stmt {

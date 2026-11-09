@@ -47,7 +47,7 @@ pub fn format_code(input: &str) -> String {
                     formatted.push('}');
                     need_newline = true;
                 }
-                // Calesteria does not have explicit Semi token, we handle newlines based on context or formatting
+                // Caria does not have explicit Semi token, we handle newlines based on context or formatting
                 Token::Comma => {
                     formatted.push(',');
                     formatted.push(' ');

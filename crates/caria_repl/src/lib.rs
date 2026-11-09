@@ -7,7 +7,7 @@ use caria_ir;
 use caria_memory;
 
 pub fn start_repl() {
-    println!("Calesteria REPL v0.4.0 (V2 Syntax — Cranelift Native JIT Phase A.2)");
+    println!("✨ Caria REPL v0.5.0 (Cranelift Native JIT)");
     println!("Type 'exit' to quit. Functions defined with 'rune' persist.");
 
     let mut input = String::new();

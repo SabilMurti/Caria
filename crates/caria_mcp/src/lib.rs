@@ -50,8 +50,8 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                     "tools": {}
                 },
                 "serverInfo": {
-                    "name": "Calesteria MCP Server",
-                    "version": "0.1.0"
+                    "name": "Caria MCP Server",
+                    "version": "0.5.0"
                 }
             })),
             error: None,
@@ -63,7 +63,7 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "tools": [
                     {
                         "name": "validate_syntax",
-                        "description": "Validates Calesteria code syntax and returns any errors found.",
+                        "description": "Validates Caria code syntax (.cria) and returns any parse errors found.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -74,7 +74,7 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                     },
                     {
                         "name": "get_spec",
-                        "description": "Returns the compact Calesteria language specification for LLM context seeding.",
+                        "description": "Returns the compact Caria language specification for LLM context seeding.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {}
@@ -82,7 +82,7 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                     },
                     {
                         "name": "compile_check",
-                        "description": "Compiles a Calesteria file and runs full typechecking, returning syntax or type error diagnostics.",
+                        "description": "Checks a Caria file for syntax and type errors.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -93,7 +93,7 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                     },
                     {
                         "name": "explain_error",
-                        "description": "Explains a parser/typechecker error and suggests a fix.",
+                        "description": "Explains a parser/typechecker error in Caria code and suggests a fix.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -105,7 +105,7 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                     },
                     {
                         "name": "scaffold",
-                        "description": "Generates a Calesteria template/project scaffold.",
+                        "description": "Generates a clean Caria standalone project scaffold.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -167,15 +167,19 @@ fn handle_tool_call(req: &JsonRpcRequest) -> serde_json::Value {
             }
         }
         "get_spec" => {
-            let spec = r#"Calesteria Programming Language Specification
-- File Extension: .caria
-- Transpiles to JavaScript (Hono + better-sqlite3)
-- Types: Int, Float, Str, Bool, Nil, List<T>, Map<K,V>, T?, Result<T,E>
-- Key Primitives:
-  - view Component(props) { <div>{props.title}</div> }
-  - route GET "/path" -> fn(c) { c.text("ok") }
-  - serve <port>
-  - query<Type>("SQL statement")"#;
+            let spec = r#"Caria Programming Language Specification (v0.5.0)
+- Extension: .cria
+- Paradigms: Native AOT compiled (Cranelift) & WebAssembly (WASM)
+- Types: int, dec, txt, flag, nil, [T] (Lists), [K:V] (Maps)
+- Syntax Features:
+  - rune name(arg: type) -> type { ... }
+  - say(val)  // print output
+  - ret expr  // return
+  - := for mutable declarations, = for immutable / assignment
+  - Pipeline operator: data |> step1() |> step2()
+  - Pattern matching: when val { 1 => "one", else => "other" }
+  - Error propagation: expr?
+  - Null-safe member access: obj?.field"#;
             json!({
                 "content": [{
                     "type": "text",
@@ -199,10 +203,10 @@ fn handle_tool_call(req: &JsonRpcRequest) -> serde_json::Value {
                                         "text": "Compilation check passed cleanly."
                                     }]
                                 }),
-                                Err(e) => json!({
+                                Err(errors) => json!({
                                     "content": [{
                                         "type": "text",
-                                        "text": format!("Type check error: {}", e.message)
+                                        "text": format!("Type check found {} error(s): {:?}", errors.len(), errors)
                                     }],
                                     "isError": true
                                 }),
@@ -230,7 +234,7 @@ fn handle_tool_call(req: &JsonRpcRequest) -> serde_json::Value {
             let _code = arguments.get("code").and_then(|v| v.as_str()).unwrap_or("");
             let error = arguments.get("error").and_then(|v| v.as_str()).unwrap_or("");
             let explanation = format!(
-                "Error encountered in Calesteria code:\n\n{}\n\nExplanation:\nMake sure you defined variables using 'let' or 'mut' and that function parameters are typed. Calesteria does not support implicit dynamic typing for variables.",
+                "Error encountered in Caria code:\n\n{}\n\nExplanation:\nVerify variable declarations use ':=' for mutable variables, functions start with 'rune', and statements end cleanly.",
                 error
             );
             json!({
@@ -241,19 +245,25 @@ fn handle_tool_call(req: &JsonRpcRequest) -> serde_json::Value {
             })
         }
         "scaffold" => {
-            let name = arguments.get("name").and_then(|v| v.as_str()).unwrap_or("project");
-            let main_caria = r#"use npm "hono" as hono
-
-route GET "/" -> fn(c) {
-    ret c.text("Welcome to Calesteria!")
+            let name = arguments.get("name").and_then(|v| v.as_str()).unwrap_or("my_caria_project");
+            let main_cria = r#"rune main() -> int {
+    say("Hello from Caria!")
+    ret 0
 }
-
-serve 3000
 "#;
+            let caria_json = format!(r#"{{
+  "name": "{}",
+  "version": "0.1.0",
+  "entry": "src/main.cria",
+  "scripts": {{
+    "run": "caria run src/main.cria"
+  }}
+}}
+"#, name);
             json!({
                 "content": [{
                     "type": "text",
-                    "text": format!("Generated project scaffold '{}':\n\ncalesteria.toml:\nname = \"{}\"\nentry = \"src/main.caria\"\nmode = \"server\"\nport = 3000\n\nsrc/main.caria:\n{}", name, name, main_caria)
+                    "text": format!("Generated Caria project scaffold '{}':\n\ncaria.json:\n{}\nsrc/main.cria:\n{}", name, caria_json, main_cria)
                 }]
             })
         }

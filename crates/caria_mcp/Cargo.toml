@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 caria_lexer = { path = "../caria_lexer" }
 caria_parser = { path = "../caria_parser" }
-caria_codegen_js = { path = "../caria_codegen_js" }
 caria_diagnostic = { path = "../caria_diagnostic" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

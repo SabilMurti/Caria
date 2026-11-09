@@ -6,7 +6,7 @@ use std::process::Command;
 use ariadne::{Report, ReportKind, Label, Source, Color};
 
 // ---------------------------------------------------------------------------
-// calesteria.toml config
+// caria.json config
 // ---------------------------------------------------------------------------
 use std::collections::{HashMap, HashSet};
 
@@ -21,14 +21,19 @@ struct CariaConfig {
 }
 
 fn parse_config(path: &str) -> CariaConfig {
-    let json_paths = ["caria.json", "calesteria.json", path];
+    let json_paths = ["caria.json", path];
     for p in &json_paths {
         if Path::new(p).exists() {
             if let Ok(content) = fs::read_to_string(p) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
                     let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("app").to_string();
-                    let entry = v.get("entry").and_then(|e| e.as_str()).unwrap_or("routes/web.cria").to_string();
-                    let mode = v.get("mode").and_then(|m| m.as_str()).unwrap_or("server").to_string();
+                    let default_entry = if Path::new("src/main.cria").exists() {
+                        "src/main.cria"
+                    } else {
+                        "main.cria"
+                    };
+                    let entry = v.get("entry").and_then(|e| e.as_str()).unwrap_or(default_entry).to_string();
+                    let mode = v.get("mode").and_then(|m| m.as_str()).unwrap_or("script").to_string();
                     let port = v.get("port").and_then(|p| p.as_u64()).map(|p| p as u16);
                     let mut scripts = HashMap::new();
                     if let Some(s_obj) = v.get("scripts").and_then(|s| s.as_object()) {
@@ -53,8 +58,8 @@ fn parse_config(path: &str) -> CariaConfig {
     }
 
     CariaConfig {
-        mode: "server".into(),
-        entry: "routes/web.cria".into(),
+        mode: "script".into(),
+        entry: if Path::new("src/main.cria").exists() { "src/main.cria".into() } else { "main.cria".into() },
         ..Default::default()
     }
 }
@@ -535,114 +540,49 @@ fn cmd_doc(file_path: &str) {
 }
 
 fn cmd_spec() {
-    let spec = r#"Caria Programming Language Specification
+    let spec = r#"Caria Programming Language Specification (v0.5.0)
  - Language Name: Caria
  - Primary Extension: .cria (also supports .aria / .caria)
- - Framework: Calesteria Web Framework
- - Template Engine: Glyph (.glyph)
- - Compiles directly to native executables via Cranelift AOT & WASM
+ - Architecture: High-Velocity Native Systems, Tooling, and Backend Language
+ - Targets: Native Linux ELF (via Cranelift AOT/JIT) & WebAssembly (WASM)
  - Types: int, dec, txt, flag, nil, [T] (Lists), [K:V] (Maps)
- - Keywords: rune, ret, say, env, if, else, unless, when, guard, while, for, in, step, get, post, put, patch, delete, model, parallel, defer, retry, times, timeout, with, validate, stream, transaction, queue, cache, js, view, style, client, int, dec, txt, flag, true, false, nil, and, or, not, is, as
- - Operators: :=, ?, ?=, =>, |>, ?., ??, ..
+ - Core Keywords: rune, ret, say, env, if, else, unless, when, guard, while, for, in, step, parallel, defer, retry, test, true, false, nil, and, or, not, is, as
+ - Operators: :=, =, ?, ?=, =>, |>, ?., ??, ..
 "#;
     println!("{}", spec);
 
-    let dir = Path::new(".calesteria");
+    let dir = Path::new(".caria");
     if !dir.exists() {
         let _ = fs::create_dir(dir);
     }
-    let _ = fs::write(".calesteria/llm-spec.md", spec);
-}
-
-fn cmd_cast(args: &[String]) {
-    // Determine the local cast script path
-    let cast_script = if Path::new("cast").exists() {
-        Some("cast")
-    } else if Path::new("cast.cria").exists() {
-        Some("cast.cria")
-    } else {
-        None
-    };
-
-    let script = match cast_script {
-        Some(s) => s,
-        None => {
-            eprintln!("Error: No cast or cast.cria script found in the current directory.");
-            std::process::exit(1);
-        }
-    };
-
-    if args.is_empty() {
-        // If no subcommand is passed, check if a 'help' or 'main' rune exists in the cast script
-        let program = parse_and_check(script, false);
-        if let Ok(code_ptr) = caria_codegen_native::NativeCompiler::compile_and_get_function(&program, "help") {
-            let func: extern "C" fn() -> i32 = unsafe { std::mem::transmute(code_ptr) };
-            let _ = func();
-        } else if let Ok(code_ptr) = caria_codegen_native::NativeCompiler::compile_and_get_function(&program, "main") {
-            let func: extern "C" fn() -> i32 = unsafe { std::mem::transmute(code_ptr) };
-            let _ = func();
-        } else {
-            println!("Usage: caria cast <subcommand> [args]");
-        }
-        return;
-    }
-
-    let subcommand = &args[0];
-    let rune_name = subcommand.replace(':', "_");
-    
-    // Pass the remaining arguments to the JIT runner
-    let sub_args = &args[1..];
-    let c_strings: Vec<std::ffi::CString> = sub_args.iter()
-        .map(|s| std::ffi::CString::new(s.as_str()).unwrap())
-        .collect();
-    let pointers: Vec<*const u8> = c_strings.iter()
-        .map(|cs| cs.as_ptr() as *const u8)
-        .collect();
-    
-    println!("Skipping caria_set_args"); //(pointers.len() as i32, pointers.as_ptr());
-
-    let program = parse_and_check(script, false);
-    match caria_codegen_native::NativeCompiler::compile_and_get_function(&program, &rune_name) {
-        Ok(code_ptr) => {
-            let func: extern "C" fn() -> i32 = unsafe { std::mem::transmute(code_ptr) };
-            let exit_code = func();
-            if exit_code != 0 {
-                std::process::exit(exit_code);
-            }
-        }
-        Err(_) => {
-            eprintln!("Error: Command '{}' (mapped to rune '{}()') not found in local '{}' script.", subcommand, rune_name, script);
-            std::process::exit(1);
-        }
-    }
+    let _ = fs::write(".caria/spec.md", spec);
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        println!("✨ Caria Language / Calesteria Web Framework 0.4.0");
+        println!("✨ Caria Programming Language Toolchain v0.5.0");
         println!("Usage:");
-        println!("  calesteria new <app-name>   Scaffold a new Calesteria magic MVC project");
-        println!("  caria cast serve            Start hot-reloading dev server");
-        println!("  caria cast make:controller  Create a new controller");
-        println!("  caria cast make:model       Create a new model");
-        println!("  caria build <file>          Compile .cria to native executable");
-        println!("  caria run <file>            Compile and run .cria natively");
-        println!("  caria dev                   Start hot-reloading dev server");
+        println!("  caria run <file.cria> [args]         Compile and run natively (JIT)");
+        println!("  caria build <file.cria> [--wasm]     Compile to native executable or WASM");
+        println!("  caria dev [file.cria]                Start live file watcher and re-run on save");
+        println!("  caria repl                           Start interactive REPL shell");
+        println!("  caria fmt <file.cria>                Format Caria source file");
+        println!("  caria doc <file.cria>                Extract documentation comments");
+        println!("  caria lsp                            Start Language Server Protocol (LSP)");
+        println!("  caria mcp                            Start Model Context Protocol (MCP) server");
+        println!("  caria spec                           Print language specification");
         return;
     }
 
     match args[1].as_str() {
-        "cast" => {
-            cmd_cast(&args[2..]);
-        }
         "spec" => {
             cmd_spec();
         }
         "doc" => {
             if args.len() < 3 {
-                eprintln!("Usage: calesteria doc <file.caria>");
+                eprintln!("Usage: caria doc <file.cria>");
                 std::process::exit(1);
             }
             cmd_doc(&args[2]);
@@ -698,19 +638,12 @@ fn main() {
             let config = parse_config("caria.json");
             let target_file = file.unwrap_or_else(|| config.entry.clone());
 
-            // Check if script exists in caria.json (e.g. `calesteria run dev`)
+            // Check if script exists in caria.json (e.g. `caria run dev`)
             if target_file == "dev" || target_file == "serve" || config.scripts.contains_key(&target_file) {
                 cmd_dev(&config.entry);
             } else {
                 cmd_run_native(&target_file, format_json, &run_args);
             }
-        }
-        "install" => {
-            if args.len() < 3 {
-                eprintln!("Usage: caria install <package-name>");
-                std::process::exit(1);
-            }
-            cmd_install(&args[2]);
         }
         "lsp" => {
             cmd_lsp();
@@ -729,7 +662,7 @@ fn main() {
         }
         "fmt" => {
             if args.len() < 3 {
-                eprintln!("Usage: calesteria fmt <file.caria>");
+                eprintln!("Usage: caria fmt <file.cria>");
                 std::process::exit(1);
             }
             cmd_fmt(&args[2]);
@@ -741,61 +674,5 @@ fn main() {
             eprintln!("Unknown command: '{}'", other);
             std::process::exit(1);
         }
-    }
-}
-
-fn cmd_install(pkg: &str) {
-    if pkg == "calesteria" {
-        println!("✨ Downloading and compiling Calesteria Web Framework Installer...");
-        let temp_dir = "/tmp/calesteria_install_temp";
-        let _ = fs::remove_dir_all(temp_dir);
-        
-        let clone_status = std::process::Command::new("git")
-            .arg("clone")
-            .arg("https://github.com/SabilMurti/Calesteria.git")
-            .arg(temp_dir)
-            .status();
-            
-        if clone_status.is_err() || !clone_status.unwrap().success() {
-            eprintln!("Error: Failed to clone Calesteria repository.");
-            std::process::exit(1);
-        }
-        
-        println!("🔨 Compiling calesteria installer...");
-        let build_status = std::process::Command::new("cargo")
-            .arg("build")
-            .arg("--release")
-            .arg("-p")
-            .arg("calesteria_cli")
-            .current_dir(temp_dir)
-            .status();
-            
-        if build_status.is_err() || !build_status.unwrap().success() {
-            eprintln!("Error: Failed to build calesteria binary.");
-            let _ = fs::remove_dir_all(temp_dir);
-            std::process::exit(1);
-        }
-        
-        println!("🚀 Registering calesteria global binary...");
-        let home_bin = format!("{}/.local/bin", std::env::var("HOME").unwrap());
-        let source_bin = format!("{}/target/release/calesteria_cli", temp_dir);
-        let dest_bin = format!("{}/calesteria", home_bin);
-        
-        let _ = fs::create_dir_all(&home_bin);
-        let copy_status = std::process::Command::new("cp")
-            .arg("-f")
-            .arg(&source_bin)
-            .arg(&dest_bin)
-            .status();
-            
-        if copy_status.is_ok() && copy_status.unwrap().success() {
-            println!("✅ Successfully installed Calesteria framework installer!");
-            println!("You can now run: calesteria new <app-name>");
-        } else {
-            eprintln!("Error: Failed to copy binary to {}", dest_bin);
-        }
-        let _ = fs::remove_dir_all(temp_dir);
-    } else {
-        eprintln!("Unknown package: '{}'", pkg);
     }
 }

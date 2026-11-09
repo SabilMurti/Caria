@@ -31,22 +31,33 @@ struct CompileContext {
 }
 
 impl CariaCompiler {
+    pub fn default_target_triple() -> target_lexicon::Triple {
+        use target_lexicon::*;
+        let host = Triple::host();
+        match host.architecture {
+            Architecture::Aarch64(_) => Triple {
+                architecture: Architecture::Aarch64(Aarch64Architecture::Aarch64),
+                vendor: Vendor::Unknown,
+                operating_system: host.operating_system,
+                environment: host.environment,
+                binary_format: host.binary_format,
+            },
+            _ => Triple {
+                architecture: Architecture::X86_64,
+                vendor: Vendor::Unknown,
+                operating_system: host.operating_system,
+                environment: host.environment,
+                binary_format: host.binary_format,
+            },
+        }
+    }
+
     pub fn new_jit() -> Result<Self, String> {
         let mut flag_builder = cranelift_codegen::settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").map_err(|e| e.to_string())?;
         flag_builder.set("opt_level", "speed").map_err(|e| e.to_string())?;
         
-        // Force baseline x86_64 ISA to avoid SIGILL on Ryzen 5 3400G (Zen+)
-        // Cranelift's native detection in 0.114 still incorrectly enables unsupported instructions
-        // Solution: manually construct a baseline triple with only guaranteed x86_64 features
-        use target_lexicon::*;
-        let triple = Triple {
-            architecture: Architecture::X86_64,
-            vendor: Vendor::Unknown,
-            operating_system: OperatingSystem::Linux,
-            environment: Environment::Gnu,
-            binary_format: BinaryFormat::Elf,
-        };
+        let triple = Self::default_target_triple();
         
         let isa = isa::lookup(triple)
             .map_err(|e| format!("ISA lookup failed: {}", e))?
@@ -72,16 +83,7 @@ impl CariaCompiler {
         flag_builder.set("use_colocated_libcalls", "false").map_err(|e| e.to_string())?;
         flag_builder.set("is_pic", "true").map_err(|e| e.to_string())?;
         
-        // CRITICAL: Use explicit baseline x86_64 triple, NOT cranelift_native::builder()
-        // cranelift_native performs runtime CPU detection that causes SIGILL on Ryzen 5 3400G
-        use target_lexicon::*;
-        let triple = Triple {
-            architecture: Architecture::X86_64,
-            vendor: Vendor::Unknown,
-            operating_system: OperatingSystem::Linux,
-            environment: Environment::Gnu,
-            binary_format: BinaryFormat::Elf,
-        };
+        let triple = Self::default_target_triple();
         
         let isa = isa::lookup(triple)
             .map_err(|e| format!("ISA lookup failed: {}", e))?

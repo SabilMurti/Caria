@@ -116,7 +116,7 @@ impl LanguageServer for Backend {
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
-                name: "Calesteria Language Server".to_string(),
+                name: "Caria Language Server".to_string(),
                 version: Some("0.1.0".to_string()),
             }),
         })
@@ -154,7 +154,7 @@ impl LanguageServer for Backend {
         let _position = params.text_document_position_params.position;
         // Simple/Stub hover for now
         Ok(Some(Hover {
-            contents: HoverContents::Scalar(MarkedString::String("Calesteria element".to_string())),
+            contents: HoverContents::Scalar(MarkedString::String("Caria element".to_string())),
             range: None,
         }))
     }
@@ -208,7 +208,7 @@ impl LanguageServer for Backend {
             .map(|kw| CompletionItem {
                 label: kw.to_string(),
                 kind: Some(CompletionItemKind::KEYWORD),
-                detail: Some("Calesteria Keyword".to_string()),
+                detail: Some("Caria Keyword".to_string()),
                 ..Default::default()
             })
             .collect();

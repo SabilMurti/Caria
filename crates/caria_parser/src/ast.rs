@@ -1,5 +1,5 @@
-// ── Calesteria V2 AST ────────────────────────────────────────────────────────
-// The root node of a Calesteria program.
+// ── Caria V2 AST ─────────────────────────────────────────────────────────────
+// The root node of a Caria program.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Program {
     pub statements: Vec<Statement>,
