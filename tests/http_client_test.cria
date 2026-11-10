@@ -1,0 +1,40 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - ADVANCED HTTP CLIENT (std.net)
+// ============================================================================
+
+summon std.net
+
+rune secure_endpoint(req: txt) -> txt {
+    ret "{\"status\":200,\"auth\":\"bearer_verified\"}"
+}
+
+rune test_http_request_with_headers() -> int {
+    port := 18895
+
+    net.route("POST", "/api/v2/secure", secure_endpoint)
+    srv_id := net.server_start(port)
+    if srv_id <= 0 {
+        say("✗ net.server_start failed")
+        ret 1
+    }
+
+    url := "http://127.0.0.1:18895/api/v2/secure"
+    headers := "{\"Authorization\":\"Bearer caria_token_xyz\"}"
+    payload := "{\"query\":\"system_metrics\"}"
+
+    res := net.request("POST", url, headers, payload)
+    if len(res) == 0 {
+        say("✗ net.request returned empty response")
+        net.server_stop(srv_id)
+        ret 2
+    }
+
+    if str_contains(res, "bearer_verified") != 1 {
+        say("✗ Expected 'bearer_verified' in response")
+        net.server_stop(srv_id)
+        ret 3
+    }
+
+    net.server_stop(srv_id)
+    ret 0
+}

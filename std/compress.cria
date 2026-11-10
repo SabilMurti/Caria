@@ -1,11 +1,35 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - GZIP COMPRESSION (std.compress)
+// CARIA STANDARD LIBRARY - COMPRESSION & ARCHIVES (std.compress)
 // ============================================================================
 
 rune compress(data: txt) -> txt {
     ret gzip_compress(data)
 }
 
-rune decompress(compressed_b64: txt) -> txt {
-    ret gzip_decompress(compressed_b64)
+rune decompress(b64: txt) -> txt {
+    ret gzip_decompress(b64)
+}
+
+rune gzip(data: txt) -> txt {
+    ret gzip_compress(data)
+}
+
+rune gunzip(b64: txt) -> txt {
+    ret gzip_decompress(b64)
+}
+
+rune tar_pack(src_dir: txt, dest_tar: txt) -> int {
+    ret tar_create(src_dir, dest_tar)
+}
+
+rune tar_unpack(tar_path: txt, dest_dir: txt) -> int {
+    ret tar_extract(tar_path, dest_dir)
+}
+
+rune zip_pack(src_file: txt, dest_zip: txt) -> int {
+    ret zip_create(src_file, dest_zip)
+}
+
+rune zip_unpack(zip_path: txt, dest_dir: txt) -> int {
+    ret zip_extract(zip_path, dest_dir)
 }

@@ -1,0 +1,43 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - TESTING & ASSERTION HARNESS (std.test)
+// ============================================================================
+
+rune assert_eq(actual: int, expected: int, msg: txt) -> int {
+    if actual != expected {
+        say(msg)
+        ret 1
+    }
+    ret 0
+}
+
+rune assert_str_eq(actual: txt, expected: txt, msg: txt) -> int {
+    if actual != expected {
+        say(msg)
+        ret 1
+    }
+    ret 0
+}
+
+rune assert_true(cond: flag, msg: txt) -> int {
+    if cond == false {
+        say(msg)
+        ret 1
+    }
+    ret 0
+}
+
+rune assert_false(cond: flag, msg: txt) -> int {
+    if cond == true {
+        say(msg)
+        ret 1
+    }
+    ret 0
+}
+
+rune assert_contains(haystack: txt, needle: txt, msg: txt) -> int {
+    if str_contains(haystack, needle) != 1 {
+        say(msg)
+        ret 1
+    }
+    ret 0
+}

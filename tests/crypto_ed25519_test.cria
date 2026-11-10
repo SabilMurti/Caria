@@ -1,0 +1,51 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - ED25519 ASYMMETRIC SIGNATURES (std.crypto)
+// ============================================================================
+
+summon std.crypto
+summon std.json
+
+rune test_ed25519_lifecycle() -> int {
+    kp_json := crypto.ed25519_create_keypair()
+    if len(kp_json) == 0 {
+        say("✗ ed25519_create_keypair produced empty string")
+        ret 1
+    }
+
+    secret_hex := json.get_field(kp_json, "secret")
+    public_hex := json.get_field(kp_json, "public")
+
+    if len(secret_hex) != 64 {
+        say("✗ Expected 64-char hex secret key")
+        ret 2
+    }
+    if len(public_hex) != 64 {
+        say("✗ Expected 64-char hex public key")
+        ret 3
+    }
+
+    msg := "Sovereign native compute payload #2026"
+    sig_hex := crypto.ed25519_sign_message(secret_hex, msg)
+
+    if len(sig_hex) != 128 {
+        say("✗ Expected 128-char hex signature (64 bytes)")
+        ret 4
+    }
+
+    // Verify valid signature
+    valid := crypto.ed25519_verify_signature(public_hex, msg, sig_hex)
+    if valid == false {
+        say("✗ Expected valid signature verification to pass")
+        ret 5
+    }
+
+    // Verify tampered message fails
+    tampered_msg := "Tampered compute payload #2026"
+    tampered_valid := crypto.ed25519_verify_signature(public_hex, tampered_msg, sig_hex)
+    if tampered_valid == true {
+        say("✗ Expected tampered signature verification to fail")
+        ret 6
+    }
+
+    ret 0
+}

@@ -1,0 +1,7 @@
+rune add_numbers(a: int, b: int) -> int {
+    ret a + b
+}
+
+rune main() -> int {
+    ret add_numbers(10, 20)
+}

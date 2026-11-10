@@ -3,6 +3,7 @@
 // ============================================================================
 
 summon std.net
+summon std.json
 
 rune health_handler(req: txt) -> txt {
     ret "{\"status\":\"healthy\",\"uptime\":100}"
@@ -34,9 +35,10 @@ rune test_http_server_daemon_and_route_dispatch() -> int {
         ret 3
     }
 
-    // Verify response content
-    if str_contains(response, "healthy") != 1 {
-        say("✗ Expected 'healthy' in response")
+    // Verify response content using json.get_field
+    status := json.get_field(response, "status")
+    if status != "healthy" {
+        say("✗ Expected status 'healthy' in response")
         net.server_stop(srv_id)
         ret 4
     }

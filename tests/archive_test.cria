@@ -1,0 +1,56 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - TAR & ZIP ARCHIVES (std.compress)
+// ============================================================================
+
+summon std.compress
+summon std.fs
+
+rune test_tar_and_zip_lifecycle() -> int {
+    // Setup test folder
+    src_dir := "/tmp/caria_arch_src"
+    fs.mkdir(src_dir)
+    file_path := "/tmp/caria_arch_src/data.txt"
+    fs.write(file_path, "enterprise native steel")
+
+    // TAR Archive Pack
+    tar_path := "/tmp/caria_test.tar"
+    pack_res := compress.tar_pack(src_dir, tar_path)
+    if pack_res != 0 {
+        say("✗ compress.tar_pack failed")
+        ret 1
+    }
+
+    if fs.exists(tar_path) == false {
+        say("✗ Expected tar file to exist")
+        ret 2
+    }
+
+    // TAR Archive Unpack
+    dest_tar_dir := "/tmp/caria_tar_out"
+    fs.mkdir(dest_tar_dir)
+    unpack_res := compress.tar_unpack(tar_path, dest_tar_dir)
+    if unpack_res != 0 {
+        say("✗ compress.tar_unpack failed")
+        ret 3
+    }
+
+    // ZIP Archive Pack
+    zip_path := "/tmp/caria_test.zip"
+    zip_res := compress.zip_pack(file_path, zip_path)
+    if zip_res != 0 {
+        say("✗ compress.zip_pack failed")
+        ret 4
+    }
+
+    if fs.exists(zip_path) == false {
+        say("✗ Expected zip file to exist")
+        ret 5
+    }
+
+    // Cleanup artifacts
+    fs.remove(file_path)
+    fs.remove(tar_path)
+    fs.remove(zip_path)
+
+    ret 0
+}

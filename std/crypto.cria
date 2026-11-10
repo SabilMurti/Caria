@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - ENTERPRISE CRYPTO & ENCODING
+// CARIA STANDARD LIBRARY - ENTERPRISE CRYPTO & ENCODING (std.crypto)
 // ============================================================================
 
 rune sha256(data: txt) -> txt {
@@ -49,4 +49,17 @@ rune encode_base64(data: txt) -> txt {
 
 rune decode_base64(encoded: txt) -> txt {
     ret base64_decode(encoded)
+}
+
+rune ed25519_create_keypair() -> txt {
+    ret ed25519_keypair()
+}
+
+rune ed25519_sign_message(secret_hex: txt, msg: txt) -> txt {
+    ret ed25519_sign(secret_hex, msg)
+}
+
+rune ed25519_verify_signature(public_hex: txt, msg: txt, sig_hex: txt) -> flag {
+    res := ed25519_verify(public_hex, msg, sig_hex)
+    ret res == 1
 }

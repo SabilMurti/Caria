@@ -18,9 +18,5 @@ rune stringify(obj: [txt: txt]) -> txt {
 }
 
 rune get_field(json_str: txt, key: txt) -> txt {
-    ret json_get(json_str, key)
-}
-
-rune json_get(json_str: txt, key: txt) -> txt {
-    ret json_get(json_str, key)
+    ret json_extract(json_str, key)
 }

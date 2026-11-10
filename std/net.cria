@@ -18,6 +18,10 @@ rune delete(url: txt) -> txt {
     ret http_delete(url)
 }
 
+rune request(method: txt, url: txt, headers_json: txt, body: txt) -> txt {
+    ret http_request(method, url, headers_json, body)
+}
+
 rune route(method: txt, path: txt, handler_fn: int) -> int {
     ret http_route(method, path, handler_fn)
 }

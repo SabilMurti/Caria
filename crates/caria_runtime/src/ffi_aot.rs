@@ -16,6 +16,7 @@ use rusqlite::Connection;
 use parking_lot::Mutex;
 use lazy_static::lazy_static;
 use aes_gcm::{Aes256Gcm, Nonce};
+use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use flate2::Compression;
@@ -370,21 +371,47 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
 }
 
 #[no_mangle] pub extern "C" fn caria_json_get(obj: i64, key: *const c_char) -> i64 {
-    if obj == 0 || key.is_null() { return 0; }
+    if obj == 0 || key.is_null() { return alloc_c_string("") as i64; }
     let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
-    unsafe {
-        let val = &*(obj as *const serde_json::Value);
-        match val.get(k) {
-            Some(serde_json::Value::String(s)) => match CString::new(s.clone()) {
-                Ok(cs) => cs.into_raw() as i64,
-                Err(_) => 0,
-            },
-            Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0),
-            Some(serde_json::Value::Bool(b)) => if *b { 1 } else { 0 },
-            Some(other) => Box::into_raw(Box::new(other.clone())) as i64,
-            None => 0,
+
+    if is_valid_ptr(obj as usize) {
+        if let Ok(raw_str) = unsafe { CStr::from_ptr(obj as *const c_char) }.to_str() {
+            let trimmed = raw_str.trim();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                    return match val.get(k) {
+                        Some(serde_json::Value::String(s)) => alloc_c_string(s.as_str()) as i64,
+                        Some(serde_json::Value::Number(n)) => {
+                            if let Some(i) = n.as_i64() {
+                                alloc_c_string(i.to_string()) as i64
+                            } else {
+                                alloc_c_string(n.to_string()) as i64
+                            }
+                        }
+                        Some(serde_json::Value::Bool(b)) => alloc_c_string(if *b { "true" } else { "false" }) as i64,
+                        Some(other) => alloc_c_string(other.to_string()) as i64,
+                        None => alloc_c_string("") as i64,
+                    };
+                }
+            }
         }
+
+        let val = unsafe { &*(obj as *const serde_json::Value) };
+        return match val.get(k) {
+            Some(serde_json::Value::String(s)) => alloc_c_string(s.as_str()) as i64,
+            Some(serde_json::Value::Number(n)) => {
+                if let Some(i) = n.as_i64() {
+                    alloc_c_string(i.to_string()) as i64
+                } else {
+                    alloc_c_string(n.to_string()) as i64
+                }
+            }
+            Some(serde_json::Value::Bool(b)) => alloc_c_string(if *b { "true" } else { "false" }) as i64,
+            Some(other) => alloc_c_string(other.to_string()) as i64,
+            None => alloc_c_string("") as i64,
+        };
     }
+    alloc_c_string("") as i64
 }
 
 // ---------------------------------------------------------------------------
@@ -2253,4 +2280,251 @@ pub extern "C" fn caria_http_serve_router(port: i64, _routes_json_ptr: *const c_
         }
     }
     0
+}
+
+// ---------------------------------------------------------------------------
+// 22. Asymmetric Cryptography & Ed25519 Signatures (std.crypto)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_ed25519_keypair() -> *mut c_char {
+    let signing_key = SigningKey::generate(&mut rand::rngs::OsRng);
+    let verifying_key = signing_key.verifying_key();
+    let secret_hex = hex::encode(signing_key.to_bytes());
+    let public_hex = hex::encode(verifying_key.to_bytes());
+    let json = serde_json::json!({
+        "secret": secret_hex,
+        "public": public_hex
+    });
+    alloc_c_string(json.to_string())
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_ed25519_sign(secret_hex_ptr: *const c_char, msg_ptr: *const c_char) -> *mut c_char {
+    if secret_hex_ptr.is_null() || msg_ptr.is_null() {
+        return alloc_c_string("");
+    }
+    let secret_hex = unsafe { CStr::from_ptr(secret_hex_ptr) }.to_str().unwrap_or("");
+    let msg = unsafe { CStr::from_ptr(msg_ptr) }.to_str().unwrap_or("");
+
+    let bytes = match hex::decode(secret_hex) {
+        Ok(b) => b,
+        Err(_) => return alloc_c_string(""),
+    };
+    if bytes.len() != 32 {
+        return alloc_c_string("");
+    }
+    let mut key_bytes = [0u8; 32];
+    key_bytes.copy_from_slice(&bytes);
+    let signing_key = SigningKey::from_bytes(&key_bytes);
+    let sig = signing_key.sign(msg.as_bytes());
+    alloc_c_string(hex::encode(sig.to_bytes()))
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_ed25519_verify(public_hex_ptr: *const c_char, msg_ptr: *const c_char, sig_hex_ptr: *const c_char) -> i64 {
+    if public_hex_ptr.is_null() || msg_ptr.is_null() || sig_hex_ptr.is_null() {
+        return 0;
+    }
+    let public_hex = unsafe { CStr::from_ptr(public_hex_ptr) }.to_str().unwrap_or("");
+    let msg = unsafe { CStr::from_ptr(msg_ptr) }.to_str().unwrap_or("");
+    let sig_hex = unsafe { CStr::from_ptr(sig_hex_ptr) }.to_str().unwrap_or("");
+
+    let pub_bytes = match hex::decode(public_hex) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+    if pub_bytes.len() != 32 {
+        return 0;
+    }
+    let mut key_bytes = [0u8; 32];
+    key_bytes.copy_from_slice(&pub_bytes);
+    let verifying_key = match VerifyingKey::from_bytes(&key_bytes) {
+        Ok(vk) => vk,
+        Err(_) => return 0,
+    };
+
+    let sig_bytes = match hex::decode(sig_hex) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+    if sig_bytes.len() != 64 {
+        return 0;
+    }
+    let mut sig_arr = [0u8; 64];
+    sig_arr.copy_from_slice(&sig_bytes);
+    let sig = Signature::from_bytes(&sig_arr);
+
+    if verifying_key.verify(msg.as_bytes(), &sig).is_ok() {
+        1
+    } else {
+        0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 23. TAR & ZIP Archive Compression Engine (std.compress)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_tar_create(src_dir_ptr: *const c_char, dest_tar_ptr: *const c_char) -> i64 {
+    if src_dir_ptr.is_null() || dest_tar_ptr.is_null() { return -1; }
+    let src = unsafe { CStr::from_ptr(src_dir_ptr) }.to_str().unwrap_or("");
+    let dest = unsafe { CStr::from_ptr(dest_tar_ptr) }.to_str().unwrap_or("");
+
+    let file = match std::fs::File::create(dest) {
+        Ok(f) => f,
+        Err(_) => return -1,
+    };
+    let mut builder = tar::Builder::new(file);
+    if builder.append_dir_all(".", src).is_err() {
+        return -1;
+    }
+    if builder.finish().is_err() {
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_tar_extract(tar_path_ptr: *const c_char, dest_dir_ptr: *const c_char) -> i64 {
+    if tar_path_ptr.is_null() || dest_dir_ptr.is_null() { return -1; }
+    let tar_p = unsafe { CStr::from_ptr(tar_path_ptr) }.to_str().unwrap_or("");
+    let dest = unsafe { CStr::from_ptr(dest_dir_ptr) }.to_str().unwrap_or("");
+
+    let file = match std::fs::File::open(tar_p) {
+        Ok(f) => f,
+        Err(_) => return -1,
+    };
+    let mut archive = tar::Archive::new(file);
+    if archive.unpack(dest).is_err() {
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_zip_create(src_file_ptr: *const c_char, dest_zip_ptr: *const c_char) -> i64 {
+    if src_file_ptr.is_null() || dest_zip_ptr.is_null() { return -1; }
+    let src = unsafe { CStr::from_ptr(src_file_ptr) }.to_str().unwrap_or("");
+    let dest = unsafe { CStr::from_ptr(dest_zip_ptr) }.to_str().unwrap_or("");
+
+    let path = std::path::Path::new(dest);
+    let file = match std::fs::File::create(path) {
+        Ok(f) => f,
+        Err(_) => return -1,
+    };
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    
+    let file_name = std::path::Path::new(src).file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    if zip.start_file(file_name, options).is_err() {
+        return -1;
+    }
+    let data = match std::fs::read(src) {
+        Ok(d) => d,
+        Err(_) => return -1,
+    };
+    if zip.write_all(&data).is_err() {
+        return -1;
+    }
+    if zip.finish().is_err() {
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_zip_extract(zip_path_ptr: *const c_char, dest_dir_ptr: *const c_char) -> i64 {
+    if zip_path_ptr.is_null() || dest_dir_ptr.is_null() { return -1; }
+    let zip_p = unsafe { CStr::from_ptr(zip_path_ptr) }.to_str().unwrap_or("");
+    let dest = unsafe { CStr::from_ptr(dest_dir_ptr) }.to_str().unwrap_or("");
+
+    let file = match std::fs::File::open(zip_p) {
+        Ok(f) => f,
+        Err(_) => return -1,
+    };
+    let mut archive = match zip::ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(_) => return -1,
+    };
+    if archive.extract(dest).is_err() {
+        return -1;
+    }
+    0
+}
+
+// ---------------------------------------------------------------------------
+// 24. Full Enterprise HTTP Client with Custom Headers & Auth (std.net)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_http_request(
+    method_ptr: *const c_char,
+    url_ptr: *const c_char,
+    headers_json_ptr: *const c_char,
+    body_ptr: *const c_char,
+) -> *mut c_char {
+    if method_ptr.is_null() || url_ptr.is_null() {
+        return alloc_c_string("{\"status\":400,\"error\":\"invalid arguments\"}");
+    }
+    let method_str = unsafe { CStr::from_ptr(method_ptr) }.to_str().unwrap_or("GET").to_uppercase();
+    let url_str = unsafe { CStr::from_ptr(url_ptr) }.to_str().unwrap_or("");
+    let headers_json = if !headers_json_ptr.is_null() {
+        unsafe { CStr::from_ptr(headers_json_ptr) }.to_str().unwrap_or("{}")
+    } else {
+        "{}"
+    };
+    let body_str = if !body_ptr.is_null() {
+        unsafe { CStr::from_ptr(body_ptr) }.to_str().unwrap_or("")
+    } else {
+        ""
+    };
+
+    let client = match reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(10)).build() {
+        Ok(c) => c,
+        Err(e) => return alloc_c_string(format!("{{\"status\":500,\"error\":\"{}\"}}", e)),
+    };
+
+    let method = match method_str.as_str() {
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "PATCH" => reqwest::Method::PATCH,
+        "HEAD" => reqwest::Method::HEAD,
+        _ => reqwest::Method::GET,
+    };
+
+    let mut req = client.request(method, url_str);
+
+    if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(headers_json) {
+        for (k, v) in map {
+            if let Some(val_str) = v.as_str() {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(val_str),
+                ) {
+                    req = req.header(name, val);
+                }
+            }
+        }
+    }
+
+    if !body_str.is_empty() {
+        req = req.body(body_str.to_string());
+    }
+
+    match req.send() {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let text = resp.text().unwrap_or_default();
+            let res_json = serde_json::json!({
+                "status": status,
+                "body": text
+            });
+            alloc_c_string(res_json.to_string())
+        }
+        Err(e) => alloc_c_string(format!("{{\"status\":502,\"error\":\"{}\"}}", e)),
+    }
 }

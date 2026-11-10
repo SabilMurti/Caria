@@ -369,6 +369,20 @@ impl CariaCompiler {
         add_symbol!("caria_ws_server_start", caria_runtime::ffi_aot::caria_ws_server_start);
         add_symbol!("caria_ws_server_stop", caria_runtime::ffi_aot::caria_ws_server_stop);
 
+        // Asymmetric Cryptography & Ed25519 Signatures
+        add_symbol!("caria_crypto_ed25519_keypair", caria_runtime::ffi_aot::caria_crypto_ed25519_keypair);
+        add_symbol!("caria_crypto_ed25519_sign", caria_runtime::ffi_aot::caria_crypto_ed25519_sign);
+        add_symbol!("caria_crypto_ed25519_verify", caria_runtime::ffi_aot::caria_crypto_ed25519_verify);
+
+        // Archive Compression (TAR & ZIP)
+        add_symbol!("caria_tar_create", caria_runtime::ffi_aot::caria_tar_create);
+        add_symbol!("caria_tar_extract", caria_runtime::ffi_aot::caria_tar_extract);
+        add_symbol!("caria_zip_create", caria_runtime::ffi_aot::caria_zip_create);
+        add_symbol!("caria_zip_extract", caria_runtime::ffi_aot::caria_zip_extract);
+
+        // Enterprise HTTP Client with Headers
+        add_symbol!("caria_http_request", caria_runtime::ffi_aot::caria_http_request);
+
         Ok(())
     }
 
@@ -673,7 +687,7 @@ impl CariaCompiler {
             // JSON
             "json_parse" => "caria_json_parse",
             "json_stringify" => "caria_json_stringify",
-            "json_get" => "caria_json_get",
+            "json_get" | "json_extract" => "caria_json_get",
             // Database (SQLite)
             "db_open" => "caria_sqlite_open",
             "db_close" => "caria_sqlite_close",
@@ -754,6 +768,10 @@ impl CariaCompiler {
             "random_bytes_hex" | "random_hex" => "caria_crypto_random_hex",
             "hex_encode" | "sys_hex_encode" => "caria_hex_encode",
             "hex_decode" | "sys_hex_decode" => "caria_hex_decode",
+            // Asymmetric Cryptography (Ed25519)
+            "ed25519_keypair" => "caria_crypto_ed25519_keypair",
+            "ed25519_sign" => "caria_crypto_ed25519_sign",
+            "ed25519_verify" => "caria_crypto_ed25519_verify",
             // WebSockets
             "ws_connect" => "caria_ws_connect",
             "ws_send" => "caria_ws_send",
@@ -776,6 +794,10 @@ impl CariaCompiler {
             // Compression
             "gzip_compress" => "caria_gzip_compress",
             "gzip_decompress" => "caria_gzip_decompress",
+            "tar_create" => "caria_tar_create",
+            "tar_extract" => "caria_tar_extract",
+            "zip_create" => "caria_zip_create",
+            "zip_extract" => "caria_zip_extract",
             // System
             "sys_os" => "caria_sys_os",
             "sys_arch" => "caria_sys_arch",
@@ -796,6 +818,7 @@ impl CariaCompiler {
             "http_dispatch" | "route_dispatch" => "caria_http_route_dispatch",
             "http_server_start" => "caria_http_server_start",
             "http_server_stop" => "caria_http_server_stop",
+            "http_request" => "caria_http_request",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
