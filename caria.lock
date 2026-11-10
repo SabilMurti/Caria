@@ -36,8 +36,10 @@
     "./std/sys.cria": "sha256:f692b74cefb8c80263cc9761410d76dc4b6848f96daeb3adcd026fde9584c3be",
     "./std/task.cria": "sha256:869da218bd88296dd679f54ba1f9b2100ce17d096746311ba069edae052b6eef",
     "./std/telemetry.cria": "sha256:7d3deb3b42bcfea3761ebb02bbbca34f70ba16d14980dcc46a9fa6772df53c27",
+    "./std/term.cria": "sha256:af0728e2838d22518890a67e5c512f0384a79268f478a05f7b9ce986a756d37b",
     "./std/test.cria": "sha256:17e82ae15822823466d484a3c0a5f30dab0987540159e52a2ba811b61969e831",
     "./std/time.cria": "sha256:d770c5bdf94cb6e799224f7d5ad166a20d27521777255091ce5e49b764635495",
+    "./std/udp.cria": "sha256:ab1c31211ef152388ecc68c2984e908b13b92bce3272d1bb8e84c9831ec97511",
     "./std/ws.cria": "sha256:39ffa10694c8ac336522ca0b674d43c03d7f20c6c85fcb3eb088623e7210db83",
     "./tests/archive_test.cria": "sha256:99726b03fb964c826733907d813363d5ee62584d7f7d3870db4b427d7f8f45a5",
     "./tests/auth_jwt_test.cria": "sha256:df22b1d36915c9b367d3acbc07ad64195c71abbb9de7f4d8a2b0465b3744d0fc",
@@ -63,10 +65,12 @@
     "./tests/sync_channel_test.cria": "sha256:958b586bcc13a304aaa35f7c1ee6bec35cd604cd10986d11e785a7ed296639c9",
     "./tests/sys_test.cria": "sha256:3c884c0e3e3780386099832cbf9d13c6f61be57bad04031eb3a3dd36519a48b8",
     "./tests/task_test.cria": "sha256:c72efcca590126a19a19ba593d36c61b2c56a4eda666c6d830f17c654fb86c52",
+    "./tests/term_test.cria": "sha256:57b90e483c6d2651386e102d2d07d658a82bbd4ea42baf0cd711a540f90b1812",
     "./tests/time_test.cria": "sha256:4f7da96b0aeec92a0f6f123da665ff2cf92a8577a10f104a1c0d1c69a125917d",
+    "./tests/udp_test.cria": "sha256:ab9dfeb289d2be05e757a2b58b15159eb674fbf965ecc32c9d8e8871e311c02f",
     "./tests/wasm_sample.cria": "sha256:1ec36fa571e351f0e9f40cc36566df0f1cbee10b5d00b854122dc3a067d5d371",
     "./tests/ws_test.cria": "sha256:3ec0462b9fc6f3f7f57374cb17fb829ce2d5fc4179680025d8123528037273f9"
   },
-  "generated_at": 1794323820,
+  "generated_at": 1794351190,
   "lockfile_version": "1.0"
 }

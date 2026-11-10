@@ -1,0 +1,55 @@
+// Caria Enterprise Standard Library: std.term
+// ANSI Terminal styling, colors, and console UI primitives
+
+rune is_atty() -> flag {
+    int_val := term_is_atty()
+    ret int_val == 1
+}
+
+rune color(col: txt, text: txt) -> txt {
+    ret term_color(col, text)
+}
+
+rune red(text: txt) -> txt {
+    ret term_color("red", text)
+}
+
+rune green(text: txt) -> txt {
+    ret term_color("green", text)
+}
+
+rune yellow(text: txt) -> txt {
+    ret term_color("yellow", text)
+}
+
+rune blue(text: txt) -> txt {
+    ret term_color("blue", text)
+}
+
+rune magenta(text: txt) -> txt {
+    ret term_color("magenta", text)
+}
+
+rune cyan(text: txt) -> txt {
+    ret term_color("cyan", text)
+}
+
+rune bold(text: txt) -> txt {
+    ret term_color("bold", text)
+}
+
+rune dim(text: txt) -> txt {
+    ret term_color("dim", text)
+}
+
+rune underline(text: txt) -> txt {
+    ret term_color("underline", text)
+}
+
+rune clear() -> int {
+    ret term_clear()
+}
+
+rune cursor_move(row: int, col: int) -> int {
+    ret term_cursor_move(row, col)
+}

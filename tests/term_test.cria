@@ -1,0 +1,29 @@
+summon std.term
+summon std.test
+
+rune main() -> int {
+    say("=== Caria Enterprise ANSI Terminal & Console UI Verification ===")
+
+    // Colors
+    red_txt := term.red("Fatal Error")
+    green_txt := term.green("Build Succeeded")
+    blue_txt := term.blue("Connecting to cluster...")
+    bold_txt := term.bold("HIGH PRIORITY")
+
+    say(red_txt)
+    say(green_txt)
+    say(blue_txt)
+    say(bold_txt)
+
+    test.assert_contains(red_txt, "Fatal Error", "Red string must contain message")
+    test.assert_contains(green_txt, "Build Succeeded", "Green string must contain message")
+    test.assert_contains(blue_txt, "Connecting", "Blue string must contain message")
+    test.assert_contains(bold_txt, "HIGH PRIORITY", "Bold string must contain message")
+
+    // Terminal interactivity check
+    is_interactive := term.is_atty()
+    say("Terminal is_atty: " + str(is_interactive))
+
+    say("[PASS] Terminal ANSI styling verification passed cleanly!")
+    ret 0
+}

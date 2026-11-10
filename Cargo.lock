@@ -424,6 +424,7 @@ name = "caria_mcp"
 version = "0.1.0"
 dependencies = [
  "caria_diagnostic",
+ "caria_formatter",
  "caria_lexer",
  "caria_parser",
  "serde",

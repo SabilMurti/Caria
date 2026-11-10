@@ -383,6 +383,23 @@ impl CariaCompiler {
         // Enterprise HTTP Client with Headers
         add_symbol!("caria_http_request", caria_runtime::ffi_aot::caria_http_request);
 
+        // UDP Sockets
+        add_symbol!("caria_udp_bind", caria_runtime::ffi_aot::caria_udp_bind);
+        add_symbol!("caria_udp_local_addr", caria_runtime::ffi_aot::caria_udp_local_addr);
+        add_symbol!("caria_udp_send_to", caria_runtime::ffi_aot::caria_udp_send_to);
+        add_symbol!("caria_udp_recv_from", caria_runtime::ffi_aot::caria_udp_recv_from);
+        add_symbol!("caria_udp_set_timeout", caria_runtime::ffi_aot::caria_udp_set_timeout);
+        add_symbol!("caria_udp_close", caria_runtime::ffi_aot::caria_udp_close);
+
+        // ANSI Terminal & Console UI
+        add_symbol!("caria_term_is_atty", caria_runtime::ffi_aot::caria_term_is_atty);
+        add_symbol!("caria_term_color", caria_runtime::ffi_aot::caria_term_color);
+        add_symbol!("caria_term_clear", caria_runtime::ffi_aot::caria_term_clear);
+        add_symbol!("caria_term_cursor_move", caria_runtime::ffi_aot::caria_term_cursor_move);
+
+        // Core to_str
+        add_symbol!("caria_to_str", caria_runtime::ffi_aot::caria_to_str);
+
         Ok(())
     }
 
@@ -454,7 +471,8 @@ impl CariaCompiler {
             .arg("-lcaria_runtime")
             .arg("-lpthread")
             .arg("-ldl")
-            .arg("-lm");
+            .arg("-lm")
+            .arg("-lbz2");
         
         let status = cmd.status()
             .map_err(|e| format!("Failed to run linker: {}", e))?;
@@ -490,13 +508,18 @@ impl CariaCompiler {
         for stmt in &prog.statements {
             if let caria_parser::ast::Statement::RuneDecl(rune) = stmt {
                 let sig = self.create_signature(rune)?;
+                let linkage = if rune.name == "main" || rune.name.starts_with("test_") {
+                    Linkage::Export
+                } else {
+                    Linkage::Local
+                };
                 let func_id = match self.module_mut() {
                     CariaModule::Jit(jit) => {
-                        jit.declare_function(&rune.name, Linkage::Export, &sig)
+                        jit.declare_function(&rune.name, linkage, &sig)
                             .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
                     }
                     CariaModule::Object(obj) => {
-                        obj.declare_function(&rune.name, Linkage::Export, &sig)
+                        obj.declare_function(&rune.name, linkage, &sig)
                             .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
                     }
                 };
@@ -626,13 +649,25 @@ impl CariaCompiler {
         arg_vals: &[cranelift_codegen::ir::Value],
         builder: &mut FunctionBuilder,
     ) -> Result<cranelift_codegen::ir::Value, String> {
+        // Coerce all arg_vals to I64 if other types to avoid Cranelift verifier mismatches
+        let coerced_args: Vec<cranelift_codegen::ir::Value> = arg_vals
+            .iter()
+            .map(|&val| {
+                if builder.func.dfg.value_type(val) != types::I64 {
+                    builder.ins().uextend(types::I64, val)
+                } else {
+                    val
+                }
+            })
+            .collect();
+
         // 1. Check if user-defined rune
         if let Some(&func_id) = self.function_ids.get(name) {
             let local_callee = match self.module_mut() {
                 CariaModule::Jit(jit) => jit.declare_func_in_func(func_id, builder.func),
                 CariaModule::Object(obj) => obj.declare_func_in_func(func_id, builder.func),
             };
-            let call_inst = builder.ins().call(local_callee, arg_vals);
+            let call_inst = builder.ins().call(local_callee, &coerced_args);
             let results = builder.inst_results(call_inst);
             return Ok(if results.is_empty() {
                 builder.ins().iconst(types::I64, 0)
@@ -819,6 +854,20 @@ impl CariaCompiler {
             "http_server_start" => "caria_http_server_start",
             "http_server_stop" => "caria_http_server_stop",
             "http_request" => "caria_http_request",
+            // UDP Sockets
+            "udp_bind" => "caria_udp_bind",
+            "udp_local_addr" => "caria_udp_local_addr",
+            "udp_send_to" => "caria_udp_send_to",
+            "udp_recv_from" => "caria_udp_recv_from",
+            "udp_set_timeout" => "caria_udp_set_timeout",
+            "udp_close" => "caria_udp_close",
+            // Terminal & Console UI
+            "term_is_atty" => "caria_term_is_atty",
+            "term_color" => "caria_term_color",
+            "term_clear" => "caria_term_clear",
+            "term_cursor_move" => "caria_term_cursor_move",
+            // Type Conversion
+            "str" | "to_str" => "caria_to_str",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
@@ -847,7 +896,7 @@ impl CariaCompiler {
             CariaModule::Object(obj) => obj.declare_func_in_func(callee, builder.func),
         };
 
-        let call_inst = builder.ins().call(local_callee, arg_vals);
+        let call_inst = builder.ins().call(local_callee, &coerced_args);
         let results = builder.inst_results(call_inst);
         Ok(if results.is_empty() {
             builder.ins().iconst(types::I64, 0)
@@ -1339,19 +1388,33 @@ impl CariaCompiler {
                     BinaryOp::Multiply => Ok(builder.ins().imul(left_val, right_val)),
                     BinaryOp::Divide => Ok(builder.ins().sdiv(left_val, right_val)),
                     BinaryOp::Modulo => Ok(builder.ins().srem(left_val, right_val)),
-                    BinaryOp::Greater => Ok(builder.ins().icmp(IntCC::SignedGreaterThan, left_val, right_val)),
-                    BinaryOp::Less => Ok(builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val)),
-                    BinaryOp::GreaterEq => Ok(builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val)),
-                    BinaryOp::LessEq => Ok(builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val)),
+                    BinaryOp::Greater => {
+                        let b = builder.ins().icmp(IntCC::SignedGreaterThan, left_val, right_val);
+                        Ok(builder.ins().uextend(types::I64, b))
+                    }
+                    BinaryOp::Less => {
+                        let b = builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val);
+                        Ok(builder.ins().uextend(types::I64, b))
+                    }
+                    BinaryOp::GreaterEq => {
+                        let b = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val);
+                        Ok(builder.ins().uextend(types::I64, b))
+                    }
+                    BinaryOp::LessEq => {
+                        let b = builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val);
+                        Ok(builder.ins().uextend(types::I64, b))
+                    }
                     BinaryOp::Eq => {
                         let eq_val = self.call_named_function("caria_smart_eq", &[left_val, right_val], builder)?;
                         let zero = builder.ins().iconst(types::I64, 0);
-                        Ok(builder.ins().icmp(IntCC::NotEqual, eq_val, zero))
+                        let b = builder.ins().icmp(IntCC::NotEqual, eq_val, zero);
+                        Ok(builder.ins().uextend(types::I64, b))
                     }
                     BinaryOp::NotEq => {
                         let eq_val = self.call_named_function("caria_smart_eq", &[left_val, right_val], builder)?;
                         let zero = builder.ins().iconst(types::I64, 0);
-                        Ok(builder.ins().icmp(IntCC::Equal, eq_val, zero))
+                        let b = builder.ins().icmp(IntCC::Equal, eq_val, zero);
+                        Ok(builder.ins().uextend(types::I64, b))
                     }
                     BinaryOp::And => {
                         // Logical AND: both must be non-zero
@@ -1367,7 +1430,8 @@ impl CariaCompiler {
                         } else {
                             right_val
                         };
-                        Ok(builder.ins().band(left_bool, right_bool))
+                        let b = builder.ins().band(left_bool, right_bool);
+                        Ok(builder.ins().uextend(types::I64, b))
                     }
                     BinaryOp::Or => {
                         // Logical OR: at least one must be non-zero
@@ -1383,7 +1447,8 @@ impl CariaCompiler {
                         } else {
                             right_val
                         };
-                        Ok(builder.ins().bor(left_bool, right_bool))
+                        let b = builder.ins().bor(left_bool, right_bool);
+                        Ok(builder.ins().uextend(types::I64, b))
                     }
                     BinaryOp::Coalesce => {
                         // Null coalesce: left != 0 ? left : right
@@ -1408,7 +1473,8 @@ impl CariaCompiler {
                         } else {
                             val
                         };
-                        Ok(builder.ins().icmp(IntCC::Equal, val_i64, zero))
+                        let b = builder.ins().icmp(IntCC::Equal, val_i64, zero);
+                        Ok(builder.ins().uextend(types::I64, b))
                     }
                 }
             }

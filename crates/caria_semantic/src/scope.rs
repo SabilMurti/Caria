@@ -225,11 +225,32 @@ impl Scope {
             "sys_os", "sys_arch", "sys_cpu_count", "sys_cwd", "sys_exit",
             "time_iso_now", "time_format", "time_parse_iso",
             "process_exec", "csv_parse", "csv_stringify",
-            "http_route", "http_dispatch",
+            "http_route", "http_dispatch", "http_server_start", "http_server_stop", "http_request",
             "caria_smart_eq", "caria_smart_neq",
+            // JSON & SQL ORM additions
+            "json_extract", "json_set", "json_has",
+            "db_migration_run", "db_table_exists", "db_select_where",
+            // Asymmetric Cryptography (Ed25519)
+            "ed25519_keypair", "ed25519_sign", "ed25519_verify",
+            // Archives
+            "tar_create", "tar_extract", "zip_create", "zip_extract",
+            // UDP Sockets
+            "udp_bind", "udp_local_addr", "udp_send_to", "udp_recv_from", "udp_set_timeout", "udp_close",
+            // ANSI Terminal
+            "term_is_atty", "term_color", "term_clear", "term_cursor_move",
         ];
         for b in builtins {
             self.symbols.insert(b.to_string(), (any_fn.clone(), false));
+        }
+
+        // Standard library module namespaces
+        let std_modules = [
+            "crypto", "net", "db", "ws", "compress", "fs", "string", "regex", "json",
+            "environ", "math", "collections", "time", "process", "sync", "task",
+            "telemetry", "auth", "redis", "test", "log", "sys", "io", "schema", "udp", "term",
+        ];
+        for m in std_modules {
+            self.symbols.insert(m.to_string(), (TypeInfo::Custom(format!("module:std.{}", m)), false));
         }
     }
 

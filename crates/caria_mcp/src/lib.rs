@@ -113,6 +113,36 @@ fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                             },
                             "required": ["name"]
                         }
+                    },
+                    {
+                        "name": "format_code",
+                        "description": "Formats Caria source code (.cria) according to official style specifications.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "code": { "type": "string" }
+                            },
+                            "required": ["code"]
+                        }
+                    },
+                    {
+                        "name": "run_code",
+                        "description": "Executes a snippet of Caria code (.cria) and returns stdout/stderr with exit code.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "code": { "type": "string" }
+                            },
+                            "required": ["code"]
+                        }
+                    },
+                    {
+                        "name": "list_stdlib",
+                        "description": "Lists all available standard library modules and rune signatures in Caria.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
                     }
                 ]
             })),
@@ -264,6 +294,85 @@ fn handle_tool_call(req: &JsonRpcRequest) -> serde_json::Value {
                 "content": [{
                     "type": "text",
                     "text": format!("Generated Caria project scaffold '{}':\n\ncaria.json:\n{}\nsrc/main.cria:\n{}", name, caria_json, main_cria)
+                }]
+            })
+        }
+        "format_code" => {
+            let code = arguments.get("code").and_then(|v| v.as_str()).unwrap_or("");
+            let formatted = caria_formatter::format_code(code);
+            json!({
+                "content": [{
+                    "type": "text",
+                    "text": formatted
+                }]
+            })
+        }
+        "run_code" => {
+            let code = arguments.get("code").and_then(|v| v.as_str()).unwrap_or("");
+            let temp_dir = std::env::temp_dir();
+            let file_name = format!("caria_mcp_{}_{}.cria", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+            let file_path = temp_dir.join(file_name);
+            if let Err(e) = std::fs::write(&file_path, code) {
+                return json!({
+                    "content": [{
+                        "type": "text",
+                        "text": format!("Failed to create temporary file: {}", e)
+                    }],
+                    "isError": true
+                });
+            }
+            let output = std::process::Command::new("caria")
+                .arg("run")
+                .arg(&file_path)
+                .output();
+            let _ = std::fs::remove_file(&file_path);
+            match output {
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                    let status = out.status.code().unwrap_or(-1);
+                    json!({
+                        "content": [{
+                            "type": "text",
+                            "text": format!("Exit Code: {}\n--- STDOUT ---\n{}\n--- STDERR ---\n{}", status, stdout, stderr)
+                        }],
+                        "isError": status != 0
+                    })
+                }
+                Err(e) => json!({
+                    "content": [{
+                        "type": "text",
+                        "text": format!("Execution error: {}", e)
+                    }],
+                    "isError": true
+                }),
+            }
+        }
+        "list_stdlib" => {
+            let catalog = serde_json::json!({
+                "modules": [
+                    { "name": "std.crypto", "desc": "AES-256-GCM, Argon2id, Ed25519, SHA256/512, CSPRNG", "runes": ["hash_sha256(data)", "hash_sha512(data)", "aes_gcm_encrypt(key, plaintext)", "aes_gcm_decrypt(key, ciphertext)", "argon2_hash(pwd)", "argon2_verify(pwd, hash)", "ed25519_keypair()", "ed25519_sign(sk, msg)", "ed25519_verify(pk, msg, sig)", "random_bytes(len)", "random_int(min, max)"] },
+                    { "name": "std.net", "desc": "HTTP Client, Dynamic Router, Server Daemon", "runes": ["get(url)", "post(url, body)", "put(url, body)", "delete(url)", "request(method, url, headers, body)", "route(method, path, handler)", "server_start(port)", "server_stop(id)", "get_param(body, key)"] },
+                    { "name": "std.db", "desc": "SQLite ORM, Migrations, Connection Pooling", "runes": ["connect(path)", "run_migration(db, name, sql)", "table_exists(db, table)", "select_where(db, table, col, val)", "exec_params(db, sql, params)", "query_params(db, sql, params)", "close(db)"] },
+                    { "name": "std.ws", "desc": "Real-Time WebSocket Client & Server Daemon", "runes": ["connect(url)", "send(ws, msg)", "recv(ws)", "close(ws)", "server_start(port)", "server_stop(id)"] },
+                    { "name": "std.compress", "desc": "GZIP, TAR, and ZIP Archive Management", "runes": ["compress(data)", "decompress(data)", "tar_pack(src_dir, dest_tar)", "tar_unpack(dest_tar, dest_dir)", "zip_pack(src_file, dest_zip)", "zip_unpack(zip_path, dest_dir)"] },
+                    { "name": "std.fs", "desc": "Filesystem I/O Operations", "runes": ["read(path)", "write(path, data)", "append(path, data)", "exists(path)", "is_file(path)", "is_dir(path)", "list_dir(path)", "remove(path)", "make_dir(path)"] },
+                    { "name": "std.string", "desc": "String Search, Slicing & Formatting", "runes": ["split(s, sep)", "join(list, sep)", "trim(s)", "trim_left(s)", "trim_right(s)", "starts_with(s, prefix)", "ends_with(s, suffix)", "contains(s, sub)", "index_of(s, sub)", "last_index_of(s, sub)", "replace(s, from, to)", "to_upper(s)", "to_lower(s)", "len(s)", "pad_left(s, n, ch)", "pad_right(s, n, ch)", "repeat(s, n)"] },
+                    { "name": "std.regex", "desc": "PCRE-style Regular Expressions", "runes": ["validate(pattern)", "is_match(pattern, text)", "find(pattern, text)", "replace_pattern(pattern, text, repl)", "replace_all(pattern, text, repl)", "split(pattern, text)", "escape(pattern)"] },
+                    { "name": "std.json", "desc": "JSON Parser & Field Extractor", "runes": ["parse(str)", "stringify(obj)", "get_field(json, key)", "set(obj, key, val)", "has(obj, key)"] },
+                    { "name": "std.environ", "desc": "Environment Variables", "runes": ["get(key)", "set(key, val)", "has(key)", "remove(key)", "all()"] },
+                    { "name": "std.math", "desc": "Advanced Math & Number Theory", "runes": ["abs(n)", "round(n)", "floor(n)", "ceil(n)", "pow(b, e)", "sqrt(n)", "gcd(a, b)", "lcm(a, b)", "factorial(n)", "is_even(n)", "is_odd(n)", "sign(n)", "max_val(a, b)", "min_val(a, b)"] },
+                    { "name": "std.collections", "desc": "List & Map Operations", "runes": ["len(list)", "push(list, val)", "pop(list)", "reverse(list)", "count(list, val)"] },
+                    { "name": "std.time", "desc": "Timestamps, Durations & Monotonic Clocks", "runes": ["now()", "now_iso()", "sleep(ms)", "format(fmt, ts)", "parse(iso_str)", "elapsed_ms(start_ts)"] },
+                    { "name": "std.process", "desc": "Subprocess Execution & Environment", "runes": ["run(cmd, args_json)", "spawn(cmd, args_json)", "exit(code)", "pid()", "current_dir()"] },
+                    { "name": "std.sync", "desc": "Inter-thread Crossbeam Channels", "runes": ["channel()", "send(ch, msg)", "recv(ch)", "try_recv(ch)"] },
+                    { "name": "std.test", "desc": "Testing Assertions", "runes": ["assert_eq(actual, expected, msg)", "assert_str_eq(actual, expected, msg)", "assert_true(cond, msg)", "assert_false(cond, msg)", "assert_contains(text, sub, msg)"] }
+                ]
+            });
+            json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string_pretty(&catalog).unwrap()
                 }]
             })
         }

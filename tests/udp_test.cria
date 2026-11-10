@@ -1,0 +1,49 @@
+summon std.udp
+summon std.json
+summon std.test
+
+rune main() -> int {
+    say("=== Caria Enterprise UDP Datagram Engine Verification ===")
+
+    // Bind receiver to an ephemeral port
+    rx_sock := udp.bind("127.0.0.1:0")
+    say(rx_sock)
+    test.assert_true(rx_sock > 0, "Receiver socket should be positive ID")
+
+    rx_addr := udp.local_addr(rx_sock)
+    say("Receiver bound to: " + rx_addr)
+    test.assert_true(rx_addr != "", "Receiver address must not be empty")
+
+    // Bind sender
+    tx_sock := udp.bind("127.0.0.1:0")
+    test.assert_true(tx_sock > 0, "Sender socket should be positive ID")
+
+    // Transmit datagram
+    payload := "Enterprise UDP Ping Packet"
+    bytes_sent := udp.send_to(tx_sock, rx_addr, payload)
+    say(bytes_sent)
+    test.assert_true(bytes_sent > 0, "Should have transmitted bytes")
+
+    // Receive datagram
+    raw_packet := udp.recv_from(rx_sock, 1024)
+    say("Raw packet received: " + raw_packet)
+    test.assert_true(raw_packet != "", "Packet should not be empty")
+
+    data := json.get_field(raw_packet, "data")
+    say("Received datagram payload: " + data)
+    test.assert_str_eq(data, payload, "Payloads must match identically")
+
+    // Verify timeout on empty queue
+    udp.set_timeout(rx_sock, 50)
+    timed_out := udp.recv_from(rx_sock, 1024)
+    test.assert_str_eq(timed_out, "", "Read on empty socket after timeout should be empty")
+
+    // Close sockets
+    c1 := udp.close(rx_sock)
+    c2 := udp.close(tx_sock)
+    test.assert_eq(c1, 1, "Receiver socket close status")
+    test.assert_eq(c2, 1, "Sender socket close status")
+
+    say("[PASS] Enterprise UDP Datagram test passed flawlessly!")
+    ret 0
+}

@@ -432,6 +432,12 @@ impl TypeChecker {
             Expression::MemberAccess { object, member, .. } => {
                 let obj_ty = self.check_expression(object);
                 match obj_ty {
+                    TypeInfo::Custom(ref s) if s.starts_with("module:") => {
+                        TypeInfo::Function {
+                            params: vec![],
+                            ret: Box::new(TypeInfo::Unknown),
+                        }
+                    }
                     TypeInfo::String => match member.as_str() {
                         "len" | "count" | "index_of" | "last_index_of" => TypeInfo::Int,
                         "trim" | "lower" | "upper" | "trim_left" | "trim_right" | "substring" | "replace" => {

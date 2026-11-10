@@ -1,0 +1,26 @@
+// Caria Enterprise Standard Library: std.udp
+// High-throughput UDP datagram sockets and transport
+
+rune bind(addr: txt) -> int {
+    ret udp_bind(addr)
+}
+
+rune local_addr(sock: int) -> txt {
+    ret udp_local_addr(sock)
+}
+
+rune send_to(sock: int, addr: txt, data: txt) -> int {
+    ret udp_send_to(sock, addr, data)
+}
+
+rune recv_from(sock: int, buf_size: int) -> txt {
+    ret udp_recv_from(sock, buf_size)
+}
+
+rune set_timeout(sock: int, ms: int) -> int {
+    ret udp_set_timeout(sock, ms)
+}
+
+rune close(sock: int) -> int {
+    ret udp_close(sock)
+}

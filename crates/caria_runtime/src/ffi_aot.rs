@@ -2528,3 +2528,179 @@ pub extern "C" fn caria_http_request(
         Err(e) => alloc_c_string(format!("{{\"status\":502,\"error\":\"{}\"}}", e)),
     }
 }
+
+// ---------------------------------------------------------------------------
+// UDP Sockets (std.udp)
+// ---------------------------------------------------------------------------
+
+lazy_static! {
+    static ref UDP_SOCKETS: Mutex<HashMap<i64, std::net::UdpSocket>> = Mutex::new(HashMap::new());
+}
+static NEXT_UDP_ID: AtomicI64 = AtomicI64::new(1);
+
+#[no_mangle]
+pub extern "C" fn caria_udp_bind(addr_ptr: *const c_char) -> i64 {
+    if addr_ptr.is_null() {
+        return -1;
+    }
+    let addr_str = unsafe { CStr::from_ptr(addr_ptr) }.to_str().unwrap_or("0.0.0.0:0");
+    match std::net::UdpSocket::bind(addr_str) {
+        Ok(socket) => {
+            let _ = socket.set_read_timeout(Some(std::time::Duration::from_millis(3000)));
+            let id = NEXT_UDP_ID.fetch_add(1, Ordering::SeqCst);
+            UDP_SOCKETS.lock().insert(id, socket);
+            id
+        }
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_udp_local_addr(sock_id: i64) -> *mut c_char {
+    let sockets = UDP_SOCKETS.lock();
+    if let Some(sock) = sockets.get(&sock_id) {
+        if let Ok(addr) = sock.local_addr() {
+            return alloc_c_string(addr.to_string());
+        }
+    }
+    alloc_c_string("")
+}
+
+#[no_mangle]
+pub extern "C" fn caria_udp_send_to(sock_id: i64, addr_ptr: *const c_char, data_ptr: *const c_char) -> i64 {
+    if addr_ptr.is_null() || data_ptr.is_null() {
+        return -1;
+    }
+    let addr_str = unsafe { CStr::from_ptr(addr_ptr) }.to_str().unwrap_or("");
+    let data_bytes = unsafe { CStr::from_ptr(data_ptr) }.to_bytes();
+
+    let sockets = UDP_SOCKETS.lock();
+    if let Some(sock) = sockets.get(&sock_id) {
+        match sock.send_to(data_bytes, addr_str) {
+            Ok(bytes) => bytes as i64,
+            Err(_) => -1,
+        }
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_udp_recv_from(sock_id: i64, buf_size: i64) -> *mut c_char {
+    let size = if buf_size <= 0 { 2048 } else { buf_size as usize };
+    let mut buf = vec![0u8; size];
+
+    let sockets = UDP_SOCKETS.lock();
+    if let Some(sock) = sockets.get(&sock_id) {
+        match sock.recv_from(&mut buf) {
+            Ok((len, src)) => {
+                let text = String::from_utf8_lossy(&buf[..len]).to_string();
+                let res = serde_json::json!({
+                    "from": src.to_string(),
+                    "data": text,
+                    "bytes": len
+                });
+                alloc_c_string(res.to_string())
+            }
+            Err(_) => alloc_c_string(""),
+        }
+    } else {
+        alloc_c_string("")
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_udp_set_timeout(sock_id: i64, timeout_ms: i64) -> i64 {
+    let sockets = UDP_SOCKETS.lock();
+    if let Some(sock) = sockets.get(&sock_id) {
+        let dur = if timeout_ms <= 0 {
+            None
+        } else {
+            Some(std::time::Duration::from_millis(timeout_ms as u64))
+        };
+        match sock.set_read_timeout(dur) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_udp_close(sock_id: i64) -> i64 {
+    if UDP_SOCKETS.lock().remove(&sock_id).is_some() {
+        1
+    } else {
+        0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ANSI Terminal & Console UI (std.term)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_term_is_atty() -> i64 {
+    use std::io::IsTerminal;
+    if std::io::stdout().is_terminal() {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_term_color(color_ptr: *const c_char, text_ptr: *const c_char) -> *mut c_char {
+    if color_ptr.is_null() || text_ptr.is_null() {
+        return alloc_c_string("");
+    }
+    let color_name = unsafe { CStr::from_ptr(color_ptr) }.to_str().unwrap_or("").to_lowercase();
+    let text = unsafe { CStr::from_ptr(text_ptr) }.to_str().unwrap_or("");
+
+    let code = match color_name.as_str() {
+        "black" => "30",
+        "red" => "31",
+        "green" => "32",
+        "yellow" => "33",
+        "blue" => "34",
+        "magenta" => "35",
+        "cyan" => "36",
+        "white" => "37",
+        "gray" | "grey" => "90",
+        "bold" => "1",
+        "dim" => "2",
+        "italic" => "3",
+        "underline" => "4",
+        "bg_black" => "40",
+        "bg_red" => "41",
+        "bg_green" => "42",
+        "bg_yellow" => "43",
+        "bg_blue" => "44",
+        "bg_magenta" => "45",
+        "bg_cyan" => "46",
+        "bg_white" => "47",
+        _ => "0",
+    };
+
+    alloc_c_string(format!("\x1b[{}m{}\x1b[0m", code, text))
+}
+
+#[no_mangle]
+pub extern "C" fn caria_term_clear() -> i64 {
+    print!("\x1b[2J\x1b[1;1H");
+    let _ = std::io::stdout().flush();
+    1
+}
+
+#[no_mangle]
+pub extern "C" fn caria_term_cursor_move(row: i64, col: i64) -> i64 {
+    print!("\x1b[{};{}H", row.max(1), col.max(1));
+    let _ = std::io::stdout().flush();
+    1
+}
+
+#[no_mangle]
+pub extern "C" fn caria_to_str(val: i64) -> *mut c_char {
+    alloc_c_string(val.to_string())
+}

@@ -419,6 +419,7 @@ fn cmd_build_native(file_path: &str, format_json: bool) {
         .arg("-lpthread")
         .arg("-ldl")
         .arg("-lm")
+        .arg("-lbz2")
         .status();
 
     // Clean up temporary files
