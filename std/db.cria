@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - DATABASE (SQLITE)
+// CARIA ENTERPRISE DATABASE LAYER (SQLITE & CONNECTION POOLING)
 // ============================================================================
 
 rune open(path: txt) -> int {
@@ -16,4 +16,37 @@ rune exec(conn_id: int, sql: txt) -> int {
 
 rune query(conn_id: int, sql: txt) -> txt {
     ret db_query(conn_id, sql)
+}
+
+rune exec_params(conn_id: int, sql: txt, params_json: txt) -> int {
+    ret db_exec_params(conn_id, sql, params_json)
+}
+
+rune query_params(conn_id: int, sql: txt, params_json: txt) -> txt {
+    ret db_query_params(conn_id, sql, params_json)
+}
+
+rune create_pool(path: txt, max_size: int) -> int {
+    ret pool_create(path, max_size)
+}
+
+rune acquire(pool_id: int) -> int {
+    ret pool_acquire(pool_id)
+}
+
+rune release(pool_id: int, conn_id: int) -> int {
+    ret pool_release(pool_id, conn_id)
+}
+
+rune exec_transaction(conn_id: int, sql_statements: [txt]) -> int {
+    exec(conn_id, "BEGIN TRANSACTION;")
+    for stmt in sql_statements {
+        res := exec(conn_id, stmt)
+        if res < 0 {
+            exec(conn_id, "ROLLBACK;")
+            ret -1
+        }
+    }
+    exec(conn_id, "COMMIT;")
+    ret 0
 }

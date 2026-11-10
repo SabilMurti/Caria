@@ -53,16 +53,27 @@ impl TypeChecker {
             // V2: RuneDecl (replaces FnDecl)
             Statement::RuneDecl(rune) => {
                 use caria_parser::ast::RuneBody;
-                match &rune.body {
+                let old_env = self.env.clone();
+                for param in &rune.params {
+                    self.env.insert(param.name.clone(), ("Any".to_string(), false));
+                }
+                let res = match &rune.body {
                     RuneBody::Block(stmts) => {
+                        let mut r = Ok(());
                         for body_stmt in stmts {
-                            self.check_statement(body_stmt)?;
+                            if let Err(e) = self.check_statement(body_stmt) {
+                                r = Err(e);
+                                break;
+                            }
                         }
+                        r
                     }
                     RuneBody::Inline(expr) => {
-                        self.infer_expression(expr)?;
+                        self.infer_expression(expr).map(|_| ())
                     }
-                }
+                };
+                self.env = old_env;
+                res?;
             }
             Statement::IfStmt(if_expr) => {
                 self.infer_expression(&if_expr.condition)?;
@@ -96,15 +107,34 @@ impl TypeChecker {
             Statement::ForRangeStmt(f) => {
                 self.infer_expression(&f.start)?;
                 self.infer_expression(&f.end)?;
+                let old_env = self.env.clone();
+                self.env.insert(f.var.clone(), ("int".to_string(), false));
+                let mut res = Ok(());
                 for s in &f.body {
-                    self.check_statement(s)?;
+                    if let Err(e) = self.check_statement(s) {
+                        res = Err(e);
+                        break;
+                    }
                 }
+                self.env = old_env;
+                res?;
             }
             Statement::ForInStmt(f) => {
                 self.infer_expression(&f.collection)?;
-                for s in &f.body {
-                    self.check_statement(s)?;
+                let old_env = self.env.clone();
+                self.env.insert(f.item_var.clone(), ("Any".to_string(), false));
+                if let Some(idx) = &f.index_var {
+                    self.env.insert(idx.clone(), ("int".to_string(), false));
                 }
+                let mut res = Ok(());
+                for s in &f.body {
+                    if let Err(e) = self.check_statement(s) {
+                        res = Err(e);
+                        break;
+                    }
+                }
+                self.env = old_env;
+                res?;
             }
             Statement::ParallelBlock(p) => {
                 for s in &p.body {
@@ -152,19 +182,21 @@ impl TypeChecker {
                     }
 
                     // Typo suggestion via Levenshtein distance
-                    let mut closest = None;
-                    let mut min_dist = usize::MAX;
-                    for k in self.env.keys() {
-                        let dist = levenshtein(name, k);
-                        if dist < min_dist && dist <= 2 {
-                            min_dist = dist;
-                            closest = Some(k);
+                    if name.len() >= 3 {
+                        let mut closest = None;
+                        let mut min_dist = usize::MAX;
+                        for k in self.env.keys() {
+                            let dist = levenshtein(name, k);
+                            if dist < min_dist && dist <= 2 && dist < name.len() {
+                                min_dist = dist;
+                                closest = Some(k);
+                            }
                         }
-                    }
-                    if let Some(c) = closest {
-                        return Err(TypeError {
-                            message: format!("Variable '{}' not found. Did you mean '{}'?", name, c)
-                        });
+                        if let Some(c) = closest {
+                            return Err(TypeError {
+                                message: format!("Variable '{}' not found. Did you mean '{}'?", name, c)
+                            });
+                        }
                     }
                     Ok(("Any".into(), false))
                 }

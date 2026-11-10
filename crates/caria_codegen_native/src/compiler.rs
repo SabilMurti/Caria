@@ -7,7 +7,7 @@ use cranelift_codegen::ir::{InstBuilder, AbiParam, Signature, UserFuncName};
 use cranelift_codegen::ir::types;
 use cranelift_codegen::settings::Configurable;
 use cranelift_codegen::isa;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::collections::HashMap;
 use cranelift_codegen::ir::condcodes::IntCC;
 
@@ -17,7 +17,7 @@ pub enum CariaModule {
 }
 
 pub struct CariaCompiler {
-    module: CariaModule,
+    module: Option<CariaModule>,
     function_cache: HashMap<String, *const u8>,
     function_ids: HashMap<String, FuncId>,
     string_data_ids: HashMap<String, DataId>,
@@ -25,10 +25,51 @@ pub struct CariaCompiler {
 
 /// Compilation context tracking variables and constants during code generation
 struct CompileContext {
-    /// Current variables: name → IR value
-    variables: HashMap<String, cranelift_codegen::ir::Value>,
+    /// Current variables: name → Cranelift Variable
+    variables: HashMap<String, Variable>,
+    /// Counter for unique Variable IDs
+    next_var_idx: u32,
     /// Interned strings: index → string content
     string_constants: Vec<String>,
+    /// Whether the current block is terminated
+    is_terminated: bool,
+}
+
+impl CompileContext {
+    fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+            next_var_idx: 0,
+            string_constants: Vec::new(),
+            is_terminated: false,
+        }
+    }
+
+    fn declare_and_def(&mut self, name: &str, val: cranelift_codegen::ir::Value, builder: &mut FunctionBuilder) {
+        let val = if builder.func.dfg.value_type(val) != types::I64 {
+            builder.ins().uextend(types::I64, val)
+        } else {
+            val
+        };
+        let var = if let Some(&existing) = self.variables.get(name) {
+            existing
+        } else {
+            let v = Variable::from_u32(self.next_var_idx);
+            self.next_var_idx += 1;
+            builder.declare_var(v, types::I64);
+            self.variables.insert(name.to_string(), v);
+            v
+        };
+        builder.def_var(var, val);
+    }
+
+    fn use_variable(&self, name: &str, builder: &mut FunctionBuilder) -> Result<cranelift_codegen::ir::Value, String> {
+        if let Some(&var) = self.variables.get(name) {
+            Ok(builder.use_var(var))
+        } else {
+            Err(format!("Undefined variable: {}", name))
+        }
+    }
 }
 
 impl CariaCompiler {
@@ -73,7 +114,7 @@ impl CariaCompiler {
         let module = JITModule::new(jit_builder);
         
         Ok(Self {
-            module: CariaModule::Jit(module),
+            module: Some(CariaModule::Jit(module)),
             function_cache: HashMap::new(),
             function_ids: HashMap::new(),
             string_data_ids: HashMap::new(),
@@ -101,11 +142,21 @@ impl CariaCompiler {
         let module = ObjectModule::new(obj_builder);
         
         Ok(Self {
-            module: CariaModule::Object(module),
+            module: Some(CariaModule::Object(module)),
             function_cache: HashMap::new(),
             function_ids: HashMap::new(),
             string_data_ids: HashMap::new(),
         })
+    }
+
+    #[inline]
+    fn module_mut(&mut self) -> &mut CariaModule {
+        self.module.as_mut().expect("Compiler module has been consumed")
+    }
+
+    #[inline]
+    fn module_ref(&self) -> &CariaModule {
+        self.module.as_ref().expect("Compiler module has been consumed")
     }
 
     fn register_jit_symbols(builder: &mut JITBuilder) -> Result<(), String> {
@@ -177,16 +228,45 @@ impl CariaCompiler {
         add_symbol!("caria_time_now", caria_runtime::ffi_aot::caria_time_now);
         add_symbol!("caria_time_now_millis", caria_runtime::ffi_aot::caria_time_now_millis);
 
-        // Database - SQLite
+        // Database - SQLite & Connection Pool
         add_symbol!("caria_sqlite_open", caria_runtime::ffi_aot::caria_sqlite_open);
         add_symbol!("caria_sqlite_close", caria_runtime::ffi_aot::caria_sqlite_close);
         add_symbol!("caria_sqlite_exec", caria_runtime::ffi_aot::caria_sqlite_exec);
         add_symbol!("caria_sqlite_query", caria_runtime::ffi_aot::caria_sqlite_query);
+        add_symbol!("caria_sqlite_exec_params", caria_runtime::ffi_aot::caria_sqlite_exec_params);
+        add_symbol!("caria_sqlite_query_params", caria_runtime::ffi_aot::caria_sqlite_query_params);
+        add_symbol!("caria_pool_create", caria_runtime::ffi_aot::caria_pool_create);
+        add_symbol!("caria_pool_acquire", caria_runtime::ffi_aot::caria_pool_acquire);
+        add_symbol!("caria_pool_release", caria_runtime::ffi_aot::caria_pool_release);
 
-        // HTTP Client & Native Microserver Engine
+        // HTTP Client & Enterprise Microserver Engine
         add_symbol!("caria_http_get", caria_runtime::ffi_aot::caria_http_get);
         add_symbol!("caria_http_post", caria_runtime::ffi_aot::caria_http_post);
         add_symbol!("caria_http_listen_and_serve", caria_runtime::ffi_aot::caria_http_listen_and_serve);
+        add_symbol!("caria_http_serve_router", caria_runtime::ffi_aot::caria_http_serve_router);
+
+        // Memory Arena & Scopes
+        add_symbol!("caria_scope_enter", caria_runtime::ffi_aot::caria_scope_enter);
+        add_symbol!("caria_scope_exit", caria_runtime::ffi_aot::caria_scope_exit);
+        add_symbol!("caria_free_ptr", caria_runtime::ffi_aot::caria_free_ptr);
+
+        // Telemetry & Metrics
+        add_symbol!("caria_metrics_inc", caria_runtime::ffi_aot::caria_metrics_inc);
+        add_symbol!("caria_metrics_get", caria_runtime::ffi_aot::caria_metrics_get);
+        add_symbol!("caria_metrics_render_prometheus", caria_runtime::ffi_aot::caria_metrics_render_prometheus);
+        
+        // Concurrency & Channels (std.sync)
+        add_symbol!("caria_channel_create", caria_runtime::ffi_aot::caria_channel_create);
+        add_symbol!("caria_channel_send", caria_runtime::ffi_aot::caria_channel_send);
+        add_symbol!("caria_channel_recv", caria_runtime::ffi_aot::caria_channel_recv);
+        add_symbol!("caria_channel_try_recv", caria_runtime::ffi_aot::caria_channel_try_recv);
+        add_symbol!("caria_channel_close", caria_runtime::ffi_aot::caria_channel_close);
+
+        // Cryptographic Authentication & JWT (std.auth)
+        add_symbol!("caria_crypto_hmac_sha256", caria_runtime::ffi_aot::caria_crypto_hmac_sha256);
+        add_symbol!("caria_crypto_safe_equals", caria_runtime::ffi_aot::caria_crypto_safe_equals);
+        add_symbol!("caria_crypto_jwt_sign", caria_runtime::ffi_aot::caria_crypto_jwt_sign);
+        add_symbol!("caria_crypto_jwt_verify", caria_runtime::ffi_aot::caria_crypto_jwt_verify);
         
         // Encoding
         add_symbol!("caria_base64_encode", caria_runtime::ffi_aot::caria_base64_encode);
@@ -208,6 +288,11 @@ impl CariaCompiler {
         add_symbol!("caria_say_float", caria_runtime::ffi_aot::caria_say_float);
         add_symbol!("caria_say_bool", caria_runtime::ffi_aot::caria_say_bool);
         add_symbol!("caria_say_str", caria_runtime::ffi_aot::caria_say_str);
+        add_symbol!("caria_say_level", caria_runtime::ffi_aot::caria_say_level);
+
+        // Content Equality
+        add_symbol!("caria_smart_eq", caria_runtime::ffi_aot::caria_smart_eq);
+        add_symbol!("caria_smart_neq", caria_runtime::ffi_aot::caria_smart_neq);
 
         Ok(())
     }
@@ -216,17 +301,7 @@ impl CariaCompiler {
         // Compile the program first
         self.compile_program(prog)?;
         
-        // For ObjectModule, we must consume it to get the product
-        // We'll temporarily replace it with a dummy JIT module
-        let triple = Self::default_target_triple();
-        
-        let isa = isa::lookup(triple)
-            .map_err(|e| format!("Failed to create ISA: {}", e))?
-            .finish(cranelift_codegen::settings::Flags::new(cranelift_codegen::settings::builder()))
-            .map_err(|e| format!("Failed to finish ISA: {}", e))?;
-        
-        let dummy_jit = JITModule::new(JITBuilder::with_isa(isa, cranelift_module::default_libcall_names()));
-        let module = std::mem::replace(&mut self.module, CariaModule::Jit(dummy_jit));
+        let module = self.module.take().ok_or("Module already consumed")?;
         
         match module {
             CariaModule::Object(obj_module) => {
@@ -251,22 +326,7 @@ impl CariaCompiler {
         // Generate object file
         let obj_path = format!("{}.o", output_path);
         
-        // For ObjectModule, we must consume it to get the product
-        let isa = {
-            let triple = Self::default_target_triple();
-            
-            let mut flag_builder = cranelift_codegen::settings::builder();
-            flag_builder.set("use_colocated_libcalls", "false").map_err(|e| e.to_string())?;
-            flag_builder.set("is_pic", "true").map_err(|e| e.to_string())?;
-            
-            isa::lookup(triple)
-                .map_err(|e| format!("ISA lookup failed: {}", e))?
-                .finish(cranelift_codegen::settings::Flags::new(flag_builder))
-                .map_err(|e| format!("ISA finish failed: {}", e))?
-        };
-        
-        let dummy_jit = JITModule::new(JITBuilder::with_isa(isa, cranelift_module::default_libcall_names()));
-        let module = std::mem::replace(&mut self.module, CariaModule::Jit(dummy_jit));
+        let module = self.module.take().ok_or("Module already consumed")?;
         
         let obj_bytes = match module {
             CariaModule::Object(obj_module) => {
@@ -298,6 +358,10 @@ impl CariaCompiler {
             .arg(output_path)
             .arg(&obj_path)
             .arg(format!("-L{}", target_dir))
+            .arg("-L/usr/local/lib")
+            .arg("-L/usr/lib")
+            .arg("-L/root/projects/Caria/target/debug")
+            .arg("-L/root/projects/Caria/target/release")
             .arg("-lcaria_runtime")
             .arg("-lpthread")
             .arg("-ldl")
@@ -337,7 +401,7 @@ impl CariaCompiler {
         for stmt in &prog.statements {
             if let caria_parser::ast::Statement::RuneDecl(rune) = stmt {
                 let sig = self.create_signature(rune)?;
-                let func_id = match &mut self.module {
+                let func_id = match self.module_mut() {
                     CariaModule::Jit(jit) => {
                         jit.declare_function(&rune.name, Linkage::Export, &sig)
                             .map_err(|e| format!("Failed to declare function {}: {}", rune.name, e))?
@@ -359,7 +423,7 @@ impl CariaCompiler {
         }
         
         // Finalize all functions
-        match &mut self.module {
+        match self.module_mut() {
             CariaModule::Jit(jit) => {
                 jit.finalize_definitions().map_err(|e| format!("JIT finalize failed: {}", e))?;
             }
@@ -389,30 +453,27 @@ impl CariaCompiler {
             builder.switch_to_block(entry_block);
             builder.seal_block(entry_block);
             
-            let mut compile_ctx = CompileContext {
-                variables: HashMap::new(),
-                string_constants: Vec::new(),
-            };
+            let mut compile_ctx = CompileContext::new();
 
             // Map function parameters from Cranelift block arguments to local variables
-            let block_params = builder.block_params(entry_block);
+            let block_params = builder.block_params(entry_block).to_vec();
             for (idx, param) in rune.params.iter().enumerate() {
                 if idx < block_params.len() {
-                    compile_ctx.variables.insert(param.name.clone(), block_params[idx]);
+                    compile_ctx.declare_and_def(&param.name, block_params[idx], &mut builder);
                 }
             }
             
             // Compile function body - extract statements from RuneBody
             match &rune.body {
                 caria_parser::ast::RuneBody::Block(statements) => {
-                    let mut has_return = false;
+                    compile_ctx.is_terminated = false;
                     for stmt in statements {
-                        if matches!(stmt, caria_parser::ast::Statement::RetStmt(_)) {
-                            has_return = true;
+                        if compile_ctx.is_terminated {
+                            break;
                         }
                         self.compile_statement(stmt, &mut compile_ctx, &mut builder)?;
                     }
-                    if !has_return {
+                    if !compile_ctx.is_terminated {
                         if builder.func.signature.returns.first().map(|r| r.value_type) == Some(types::I32) {
                             let zero = builder.ins().iconst(types::I32, 0);
                             builder.ins().return_(&[zero]);
@@ -420,6 +481,7 @@ impl CariaCompiler {
                             let zero = builder.ins().iconst(types::I64, 0);
                             builder.ins().return_(&[zero]);
                         }
+                        compile_ctx.is_terminated = true;
                     }
                 }
                 caria_parser::ast::RuneBody::Inline(expr) => {
@@ -437,7 +499,7 @@ impl CariaCompiler {
         }
         
         // Define the function in the module
-        match &mut self.module {
+        match self.module_mut() {
             CariaModule::Jit(jit) => {
                 jit.define_function(func_id, &mut ctx)
                     .map_err(|e| format!("Failed to define function {}: {}", rune.name, e))?;
@@ -477,7 +539,7 @@ impl CariaCompiler {
     ) -> Result<cranelift_codegen::ir::Value, String> {
         // 1. Check if user-defined rune
         if let Some(&func_id) = self.function_ids.get(name) {
-            let local_callee = match &mut self.module {
+            let local_callee = match self.module_mut() {
                 CariaModule::Jit(jit) => jit.declare_func_in_func(func_id, builder.func),
                 CariaModule::Object(obj) => obj.declare_func_in_func(func_id, builder.func),
             };
@@ -538,10 +600,35 @@ impl CariaCompiler {
             "db_close" => "caria_sqlite_close",
             "db_exec" => "caria_sqlite_exec",
             "db_query" => "caria_sqlite_query",
+            "db_exec_params" => "caria_sqlite_exec_params",
+            "db_query_params" => "caria_sqlite_query_params",
+            "pool_create" => "caria_pool_create",
+            "pool_acquire" => "caria_pool_acquire",
+            "pool_release" => "caria_pool_release",
             // HTTP
             "http_get" => "caria_http_get",
             "http_post" => "caria_http_post",
             "http_serve" => "caria_http_listen_and_serve",
+            "http_serve_router" => "caria_http_serve_router",
+            // Scopes & Arena
+            "scope_enter" => "caria_scope_enter",
+            "scope_exit" => "caria_scope_exit",
+            "free_ptr" => "caria_free_ptr",
+            // Metrics & Telemetry
+            "metrics_inc" => "caria_metrics_inc",
+            "metrics_get" => "caria_metrics_get",
+            "metrics_render_prometheus" => "caria_metrics_render_prometheus",
+            // Concurrency & Channels
+            "channel_create" => "caria_channel_create",
+            "channel_send" => "caria_channel_send",
+            "channel_recv" => "caria_channel_recv",
+            "channel_try_recv" => "caria_channel_try_recv",
+            "channel_close" => "caria_channel_close",
+            // Cryptographic Authentication & JWT
+            "hmac_sha256" => "caria_crypto_hmac_sha256",
+            "safe_equals" => "caria_crypto_safe_equals",
+            "jwt_sign" => "caria_crypto_jwt_sign",
+            "jwt_verify" => "caria_crypto_jwt_verify",
             // I/O & OS
             "file_read" => "caria_file_read",
             "file_write" => "caria_file_write",
@@ -562,6 +649,11 @@ impl CariaCompiler {
             // Regex
             "regex_test" => "caria_regex_test",
             "regex_replace" => "caria_regex_replace",
+            "regex_match" => "caria_regex_match",
+            "regex_match_all" => "caria_regex_match_all",
+            "regex_find" => "caria_regex_find",
+            "regex_split" => "caria_regex_split",
+            "regex_escape" => "caria_regex_escape",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
@@ -578,14 +670,14 @@ impl CariaCompiler {
         }
         sig.returns.push(AbiParam::new(types::I64));
 
-        let callee = match &mut self.module {
+        let callee = match self.module_mut() {
             CariaModule::Jit(jit) => jit.declare_function(target_symbol, Linkage::Import, &sig)
                 .map_err(|e| format!("Failed to declare FFI function '{}': {}", target_symbol, e))?,
             CariaModule::Object(obj) => obj.declare_function(target_symbol, Linkage::Import, &sig)
                 .map_err(|e| format!("Failed to declare FFI function '{}': {}", target_symbol, e))?,
         };
 
-        let local_callee = match &mut self.module {
+        let local_callee = match self.module_mut() {
             CariaModule::Jit(jit) => jit.declare_func_in_func(callee, builder.func),
             CariaModule::Object(obj) => obj.declare_func_in_func(callee, builder.func),
         };
@@ -600,7 +692,7 @@ impl CariaCompiler {
     }
     
     fn get_pointer_type(&self) -> cranelift_codegen::ir::Type {
-        match &self.module {
+        match self.module_ref() {
             CariaModule::Jit(jit) => jit.target_config().pointer_type(),
             CariaModule::Object(obj) => obj.target_config().pointer_type(),
         }
@@ -612,14 +704,13 @@ impl CariaCompiler {
             return Ok(ptr);
         }
         
-        match &mut self.module {
+        let func_id = *self.function_ids.get(name)
+            .ok_or_else(|| format!("Function '{}' not found", name))?;
+
+        match self.module_mut() {
             CariaModule::Jit(jit) => {
-                // Look up the function ID from our tracking map
-                let func_id = self.function_ids.get(name)
-                    .ok_or_else(|| format!("Function '{}' not found", name))?;
-                
                 // Get code pointer from JIT module
-                let ptr = jit.get_finalized_function(*func_id);
+                let ptr = jit.get_finalized_function(func_id);
                 
                 // Cache it
                 self.function_cache.insert(name.to_string(), ptr);
@@ -638,24 +729,27 @@ impl CariaCompiler {
         ctx: &mut CompileContext,
         builder: &mut FunctionBuilder,
     ) -> Result<(), String> {
+        if ctx.is_terminated {
+            return Ok(());
+        }
         match stmt {
             // --- Variable declarations ---
             caria_parser::ast::Statement::ConstDecl(cd) => {
                 let val = self.compile_expression(&cd.value, ctx, builder)?;
-                ctx.variables.insert(cd.name.clone(), val);
+                ctx.declare_and_def(&cd.name, val, builder);
                 Ok(())
             }
             
             caria_parser::ast::Statement::MutDecl(md) => {
                 let val = self.compile_expression(&md.value, ctx, builder)?;
-                ctx.variables.insert(md.name.clone(), val);
+                ctx.declare_and_def(&md.name, val, builder);
                 Ok(())
             }
             
             // --- Assignment ---
             caria_parser::ast::Statement::AssignStmt(ast) => {
                 let val = self.compile_expression(&ast.value, ctx, builder)?;
-                ctx.variables.insert(ast.name.clone(), val);
+                ctx.declare_and_def(&ast.name, val, builder);
                 Ok(())
             }
             
@@ -668,46 +762,69 @@ impl CariaCompiler {
             // --- Return ---
             caria_parser::ast::Statement::RetStmt(expr) => {
                 let val = self.compile_expression(expr, ctx, builder)?;
+                let val = if builder.func.dfg.value_type(val) != types::I64 {
+                    builder.ins().uextend(types::I64, val)
+                } else {
+                    val
+                };
                 if builder.func.signature.returns.first().map(|r| r.value_type) == Some(types::I32) {
                     let ret_val = builder.ins().ireduce(types::I32, val);
                     builder.ins().return_(&[ret_val]);
                 } else {
                     builder.ins().return_(&[val]);
                 }
+                ctx.is_terminated = true;
                 Ok(())
             }
             
             // --- If statement ---
             caria_parser::ast::Statement::IfStmt(if_expr) => {
                 let cond = self.compile_expression(&if_expr.condition, ctx, builder)?;
+                let cond_bool = if builder.func.dfg.value_type(cond) == types::I64 {
+                    let zero = builder.ins().iconst(types::I64, 0);
+                    builder.ins().icmp(IntCC::NotEqual, cond, zero)
+                } else {
+                    cond
+                };
                 
                 let then_block = builder.create_block();
                 let else_block = builder.create_block();
                 let merge_block = builder.create_block();
                 
-                builder.ins().brif(cond, then_block, &[], else_block, &[]);
+                builder.ins().brif(cond_bool, then_block, &[], else_block, &[]);
                 
                 // Then branch
                 builder.switch_to_block(then_block);
                 builder.seal_block(then_block);
+                ctx.is_terminated = false;
                 for s in &if_expr.consequence {
+                    if ctx.is_terminated { break; }
                     self.compile_statement(s, ctx, builder)?;
                 }
-                builder.ins().jump(merge_block, &[]);
+                let then_term = ctx.is_terminated;
+                if !then_term {
+                    builder.ins().jump(merge_block, &[]);
+                }
                 
                 // Else branch
                 builder.switch_to_block(else_block);
                 builder.seal_block(else_block);
+                ctx.is_terminated = false;
                 if let Some(ref alt) = if_expr.alternative {
                     for s in alt {
+                        if ctx.is_terminated { break; }
                         self.compile_statement(s, ctx, builder)?;
                     }
                 }
-                builder.ins().jump(merge_block, &[]);
+                let else_term = ctx.is_terminated;
+                if !else_term {
+                    builder.ins().jump(merge_block, &[]);
+                }
                 
                 // Merge point
                 builder.switch_to_block(merge_block);
                 builder.seal_block(merge_block);
+                ctx.is_terminated = then_term && else_term;
                 Ok(())
             }
             
@@ -720,21 +837,33 @@ impl CariaCompiler {
                 builder.ins().jump(header_block, &[]);
                 
                 builder.switch_to_block(header_block);
-                builder.seal_block(header_block);
+                ctx.is_terminated = false;
                 let cond = self.compile_expression(&ws.condition, ctx, builder)?;
-                builder.ins().brif(cond, body_block, &[], after_block, &[]);
+                let cond_bool = if builder.func.dfg.value_type(cond) == types::I64 {
+                    let zero = builder.ins().iconst(types::I64, 0);
+                    builder.ins().icmp(IntCC::NotEqual, cond, zero)
+                } else {
+                    cond
+                };
+                builder.ins().brif(cond_bool, body_block, &[], after_block, &[]);
                 
                 builder.switch_to_block(body_block);
                 builder.seal_block(body_block);
+                ctx.is_terminated = false;
                 let one = builder.ins().iconst(types::I64, 1);
                 let _ = self.call_named_function("caria_gas_tick", &[one], builder);
                 for s in &ws.body {
+                    if ctx.is_terminated { break; }
                     self.compile_statement(s, ctx, builder)?;
                 }
-                builder.ins().jump(header_block, &[]);
+                if !ctx.is_terminated {
+                    builder.ins().jump(header_block, &[]);
+                }
                 
+                builder.seal_block(header_block);
                 builder.switch_to_block(after_block);
                 builder.seal_block(after_block);
+                ctx.is_terminated = false;
                 Ok(())
             }
             
@@ -749,7 +878,7 @@ impl CariaCompiler {
                     builder.ins().iconst(types::I64, 1)
                 };
                 
-                ctx.variables.insert(frs.var.clone(), start_val);
+                ctx.declare_and_def(&frs.var, start_val, builder);
                 
                 let header_block = builder.create_block();
                 let body_block = builder.create_block();
@@ -758,10 +887,9 @@ impl CariaCompiler {
                 builder.ins().jump(header_block, &[]);
                 
                 builder.switch_to_block(header_block);
-                builder.seal_block(header_block);
+                ctx.is_terminated = false;
                 
-                let current = ctx.variables.get(&frs.var).cloned()
-                    .ok_or_else(|| format!("Loop variable {} not found", frs.var))?;
+                let current = ctx.use_variable(&frs.var, builder)?;
                 
                 // Check condition: current < end
                 let cond = builder.ins().icmp(IntCC::SignedLessThan, current, end_val);
@@ -769,65 +897,94 @@ impl CariaCompiler {
                 
                 builder.switch_to_block(body_block);
                 builder.seal_block(body_block);
+                ctx.is_terminated = false;
                 let one = builder.ins().iconst(types::I64, 1);
                 let _ = self.call_named_function("caria_gas_tick", &[one], builder);
                 for s in &frs.body {
+                    if ctx.is_terminated { break; }
                     self.compile_statement(s, ctx, builder)?;
                 }
                 
-                // Increment loop variable
-                let current = ctx.variables.get(&frs.var).cloned()
-                    .ok_or_else(|| format!("Loop variable {} not found", frs.var))?;
-                let next = builder.ins().iadd(current, step_val);
-                ctx.variables.insert(frs.var.clone(), next);
+                if !ctx.is_terminated {
+                    // Increment loop variable
+                    let current = ctx.use_variable(&frs.var, builder)?;
+                    let next = builder.ins().iadd(current, step_val);
+                    ctx.declare_and_def(&frs.var, next, builder);
+                    
+                    builder.ins().jump(header_block, &[]);
+                }
                 
-                builder.ins().jump(header_block, &[]);
-                
+                builder.seal_block(header_block);
                 builder.switch_to_block(after_block);
                 builder.seal_block(after_block);
+                ctx.is_terminated = false;
                 Ok(())
             }
 
             // --- Unless statement (if !cond) ---
             caria_parser::ast::Statement::UnlessStmt(unless_stmt) => {
                 let cond = self.compile_expression(&unless_stmt.condition, ctx, builder)?;
+                let cond_bool = if builder.func.dfg.value_type(cond) == types::I64 {
+                    let zero = builder.ins().iconst(types::I64, 0);
+                    builder.ins().icmp(IntCC::NotEqual, cond, zero)
+                } else {
+                    cond
+                };
                 
                 let body_block = builder.create_block();
                 let merge_block = builder.create_block();
                 
                 // brif cond, merge_block, body_block (execute body if cond is zero)
-                builder.ins().brif(cond, merge_block, &[], body_block, &[]);
+                builder.ins().brif(cond_bool, merge_block, &[], body_block, &[]);
                 
                 builder.switch_to_block(body_block);
                 builder.seal_block(body_block);
+                ctx.is_terminated = false;
                 for s in &unless_stmt.body {
+                    if ctx.is_terminated { break; }
                     self.compile_statement(s, ctx, builder)?;
                 }
-                builder.ins().jump(merge_block, &[]);
+                let body_term = ctx.is_terminated;
+                if !body_term {
+                    builder.ins().jump(merge_block, &[]);
+                }
                 
                 builder.switch_to_block(merge_block);
                 builder.seal_block(merge_block);
+                ctx.is_terminated = false;
                 Ok(())
             }
 
             // --- Guard statement (guard cond else { fallback }) ---
             caria_parser::ast::Statement::GuardStmt(guard_stmt) => {
                 let cond = self.compile_expression(&guard_stmt.condition, ctx, builder)?;
+                let cond_bool = if builder.func.dfg.value_type(cond) == types::I64 {
+                    let zero = builder.ins().iconst(types::I64, 0);
+                    builder.ins().icmp(IntCC::NotEqual, cond, zero)
+                } else {
+                    cond
+                };
                 
                 let proceed_block = builder.create_block();
                 let fallback_block = builder.create_block();
                 
-                builder.ins().brif(cond, proceed_block, &[], fallback_block, &[]);
+                builder.ins().brif(cond_bool, proceed_block, &[], fallback_block, &[]);
                 
                 builder.switch_to_block(fallback_block);
                 builder.seal_block(fallback_block);
+                ctx.is_terminated = false;
                 for s in &guard_stmt.fallback {
+                    if ctx.is_terminated { break; }
                     self.compile_statement(s, ctx, builder)?;
                 }
-                builder.ins().jump(proceed_block, &[]);
+                let fallback_term = ctx.is_terminated;
+                if !fallback_term {
+                    builder.ins().jump(proceed_block, &[]);
+                }
                 
                 builder.switch_to_block(proceed_block);
                 builder.seal_block(proceed_block);
+                ctx.is_terminated = false;
                 Ok(())
             }
 
@@ -842,45 +999,51 @@ impl CariaCompiler {
                 
                 let zero = builder.ins().iconst(types::I64, 0);
                 let counter_var = format!("__for_idx_{}", ctx.variables.len());
-                ctx.variables.insert(counter_var.clone(), zero);
+                ctx.declare_and_def(&counter_var, zero, builder);
                 
                 builder.ins().jump(loop_head, &[]);
                 
                 // Loop Head: current_i < len
                 builder.switch_to_block(loop_head);
-                builder.seal_block(loop_head);
-                let current_i = ctx.variables.get(&counter_var).cloned().unwrap();
+                ctx.is_terminated = false;
+                let current_i = ctx.use_variable(&counter_var, builder)?;
                 let cond = builder.ins().icmp(IntCC::SignedLessThan, current_i, len_val);
                 builder.ins().brif(cond, loop_body, &[], after_block, &[]);
                 
                 // Loop Body
                 builder.switch_to_block(loop_body);
                 builder.seal_block(loop_body);
+                ctx.is_terminated = false;
                 let one = builder.ins().iconst(types::I64, 1);
                 let _ = self.call_named_function("caria_gas_tick", &[one], builder);
 
                 let item_val = self.call_named_function("caria_array_get", &[arr_ptr, current_i], builder)?;
-                ctx.variables.insert(for_in.item_var.clone(), item_val);
+                ctx.declare_and_def(&for_in.item_var, item_val, builder);
                 if let Some(ref idx_name) = for_in.index_var {
-                    ctx.variables.insert(idx_name.clone(), current_i);
+                    ctx.declare_and_def(idx_name, current_i, builder);
                 }
                 
                 for s in &for_in.body {
+                    if ctx.is_terminated { break; }
                     self.compile_statement(s, ctx, builder)?;
                 }
                 
-                let next_i = builder.ins().iadd(current_i, one);
-                ctx.variables.insert(counter_var.clone(), next_i);
-                builder.ins().jump(loop_head, &[]);
+                if !ctx.is_terminated {
+                    let next_i = builder.ins().iadd(current_i, one);
+                    ctx.declare_and_def(&counter_var, next_i, builder);
+                    builder.ins().jump(loop_head, &[]);
+                }
                 
+                builder.seal_block(loop_head);
                 builder.switch_to_block(after_block);
                 builder.seal_block(after_block);
+                ctx.is_terminated = false;
                 Ok(())
             }
 
             // --- Null-assign statement (name ?= value) ---
             caria_parser::ast::Statement::NullAssignStmt { name, value } => {
-                let current = ctx.variables.get(name).cloned();
+                let current = ctx.use_variable(name, builder).ok();
                 let zero = builder.ins().iconst(types::I64, 0);
                 let should_assign = if let Some(cur_val) = current {
                     builder.ins().icmp(IntCC::Equal, cur_val, zero)
@@ -895,7 +1058,7 @@ impl CariaCompiler {
                 builder.switch_to_block(assign_block);
                 builder.seal_block(assign_block);
                 let new_val = self.compile_expression(value, ctx, builder)?;
-                ctx.variables.insert(name.clone(), new_val);
+                ctx.declare_and_def(name, new_val, builder);
                 builder.ins().jump(merge_block, &[]);
                 
                 builder.switch_to_block(merge_block);
@@ -921,7 +1084,7 @@ impl CariaCompiler {
                 sig.returns.push(AbiParam::new(types::I64));
                 
                 // Import function
-                let callee = match &mut self.module {
+                let callee = match self.module_mut() {
                     CariaModule::Jit(jit) => {
                         jit.declare_function(fn_name, Linkage::Import, &sig)
                             .map_err(|e| format!("Failed to declare {}: {}", fn_name, e))?
@@ -933,7 +1096,7 @@ impl CariaCompiler {
                 };
                 
                 // Get local function reference for the call
-                let local_callee = match &mut self.module {
+                let local_callee = match self.module_mut() {
                     CariaModule::Jit(jit) => jit.declare_func_in_func(callee, builder.func),
                     CariaModule::Object(obj) => obj.declare_func_in_func(callee, builder.func),
                 };
@@ -944,14 +1107,13 @@ impl CariaCompiler {
             }
             
             caria_parser::ast::Statement::SayLevel { level, args } => {
-                let prefix = format!("[{}] ", level.to_uppercase());
-                let prefix_lit = caria_parser::ast::Literal::Str(prefix);
-                let prefix_val = self.compile_literal(&prefix_lit, ctx, builder)?;
-                let _ = self.call_named_function("caria_say_str", &[prefix_val], builder);
+                let lvl = level.to_uppercase();
+                let lvl_lit = caria_parser::ast::Literal::Str(lvl);
+                let lvl_val = self.compile_literal(&lvl_lit, ctx, builder)?;
 
                 for arg in args {
                     let val = self.compile_expression(arg, ctx, builder)?;
-                    let _ = self.call_named_function("caria_say", &[val], builder);
+                    let _ = self.call_named_function("caria_say_level", &[lvl_val, val], builder);
                 }
                 Ok(())
             }
@@ -975,9 +1137,7 @@ impl CariaCompiler {
             
             // --- Identifier ---
             caria_parser::ast::Expression::Identifier(name) => {
-                ctx.variables.get(name)
-                    .cloned()
-                    .ok_or_else(|| format!("Undefined variable: {}", name))
+                ctx.use_variable(name, builder)
             }
             
             // --- Binary operations ---
@@ -1007,20 +1167,46 @@ impl CariaCompiler {
                     BinaryOp::Less => Ok(builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val)),
                     BinaryOp::GreaterEq => Ok(builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val)),
                     BinaryOp::LessEq => Ok(builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val)),
-                    BinaryOp::Eq => Ok(builder.ins().icmp(IntCC::Equal, left_val, right_val)),
-                    BinaryOp::NotEq => Ok(builder.ins().icmp(IntCC::NotEqual, left_val, right_val)),
+                    BinaryOp::Eq => {
+                        let eq_val = self.call_named_function("caria_smart_eq", &[left_val, right_val], builder)?;
+                        let zero = builder.ins().iconst(types::I64, 0);
+                        Ok(builder.ins().icmp(IntCC::NotEqual, eq_val, zero))
+                    }
+                    BinaryOp::NotEq => {
+                        let eq_val = self.call_named_function("caria_smart_eq", &[left_val, right_val], builder)?;
+                        let zero = builder.ins().iconst(types::I64, 0);
+                        Ok(builder.ins().icmp(IntCC::Equal, eq_val, zero))
+                    }
                     BinaryOp::And => {
                         // Logical AND: both must be non-zero
-                        let zero = builder.ins().iconst(types::I64, 0);
-                        let left_bool = builder.ins().icmp(IntCC::NotEqual, left_val, zero);
-                        let right_bool = builder.ins().icmp(IntCC::NotEqual, right_val, zero);
+                        let left_bool = if builder.func.dfg.value_type(left_val) == types::I64 {
+                            let zero = builder.ins().iconst(types::I64, 0);
+                            builder.ins().icmp(IntCC::NotEqual, left_val, zero)
+                        } else {
+                            left_val
+                        };
+                        let right_bool = if builder.func.dfg.value_type(right_val) == types::I64 {
+                            let zero = builder.ins().iconst(types::I64, 0);
+                            builder.ins().icmp(IntCC::NotEqual, right_val, zero)
+                        } else {
+                            right_val
+                        };
                         Ok(builder.ins().band(left_bool, right_bool))
                     }
                     BinaryOp::Or => {
                         // Logical OR: at least one must be non-zero
-                        let zero = builder.ins().iconst(types::I64, 0);
-                        let left_bool = builder.ins().icmp(IntCC::NotEqual, left_val, zero);
-                        let right_bool = builder.ins().icmp(IntCC::NotEqual, right_val, zero);
+                        let left_bool = if builder.func.dfg.value_type(left_val) == types::I64 {
+                            let zero = builder.ins().iconst(types::I64, 0);
+                            builder.ins().icmp(IntCC::NotEqual, left_val, zero)
+                        } else {
+                            left_val
+                        };
+                        let right_bool = if builder.func.dfg.value_type(right_val) == types::I64 {
+                            let zero = builder.ins().iconst(types::I64, 0);
+                            builder.ins().icmp(IntCC::NotEqual, right_val, zero)
+                        } else {
+                            right_val
+                        };
                         Ok(builder.ins().bor(left_bool, right_bool))
                     }
                     BinaryOp::Coalesce => {
@@ -1041,7 +1227,12 @@ impl CariaCompiler {
                     UnaryOp::Neg => Ok(builder.ins().ineg(val)),
                     UnaryOp::Not => {
                         let zero = builder.ins().iconst(types::I64, 0);
-                        Ok(builder.ins().icmp(IntCC::Equal, val, zero))
+                        let val_i64 = if builder.func.dfg.value_type(val) != types::I64 {
+                            builder.ins().uextend(types::I64, val)
+                        } else {
+                            val
+                        };
+                        Ok(builder.ins().icmp(IntCC::Equal, val_i64, zero))
                     }
                 }
             }
@@ -1049,14 +1240,26 @@ impl CariaCompiler {
             // --- Ternary expression ---
             caria_parser::ast::Expression::TernaryExpr { condition, true_expr, false_expr } => {
                 let cond = self.compile_expression(condition, ctx, builder)?;
+                let cond_b = if builder.func.dfg.value_type(cond) == types::I64 {
+                    let zero = builder.ins().iconst(types::I64, 0);
+                    builder.ins().icmp(IntCC::NotEqual, cond, zero)
+                } else {
+                    cond
+                };
                 let true_val = self.compile_expression(true_expr, ctx, builder)?;
                 let false_val = self.compile_expression(false_expr, ctx, builder)?;
-                Ok(builder.ins().select(cond, true_val, false_val))
+                Ok(builder.ins().select(cond_b, true_val, false_val))
             }
             
             // --- If expression ---
             caria_parser::ast::Expression::IfExpr(if_expr) => {
                 let cond = self.compile_expression(&if_expr.condition, ctx, builder)?;
+                let cond_bool = if builder.func.dfg.value_type(cond) == types::I64 {
+                    let zero = builder.ins().iconst(types::I64, 0);
+                    builder.ins().icmp(IntCC::NotEqual, cond, zero)
+                } else {
+                    cond
+                };
                 
                 let then_block = builder.create_block();
                 let else_block = builder.create_block();
@@ -1065,7 +1268,7 @@ impl CariaCompiler {
                 // Add a block parameter for the result value
                 builder.append_block_param(merge_block, types::I64);
                 
-                builder.ins().brif(cond, then_block, &[], else_block, &[]);
+                builder.ins().brif(cond_bool, then_block, &[], else_block, &[]);
                 
                 // Then branch
                 builder.switch_to_block(then_block);
@@ -1141,7 +1344,7 @@ impl CariaCompiler {
                             builder.ins().brif(in_range, arm_body_block, &[], next_check_block, &[]);
                         }
                         caria_parser::ast::WhenPattern::Identifier(name) => {
-                            if let Some(id_val) = ctx.variables.get(name).cloned() {
+                            if let Ok(id_val) = ctx.use_variable(name, builder) {
                                 let cond = builder.ins().icmp(IntCC::Equal, subj_val, id_val);
                                 builder.ins().brif(cond, arm_body_block, &[], next_check_block, &[]);
                             } else {
@@ -1277,7 +1480,7 @@ impl CariaCompiler {
                     bytes.push(0);
                     desc.define(bytes.into_boxed_slice());
                     let name = format!("str_data_{}", self.string_data_ids.len());
-                    let id = match &mut self.module {
+                    let id = match self.module_mut() {
                         CariaModule::Jit(jit) => {
                             let id = jit.declare_data(&name, Linkage::Local, false, false)
                                 .map_err(|e| format!("declare_data failed: {}", e))?;
@@ -1297,7 +1500,7 @@ impl CariaCompiler {
                     id
                 };
 
-                let local_data = match &mut self.module {
+                let local_data = match self.module_mut() {
                     CariaModule::Jit(jit) => jit.declare_data_in_func(data_id, builder.func),
                     CariaModule::Object(obj) => obj.declare_data_in_func(data_id, builder.func),
                 };

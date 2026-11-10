@@ -203,10 +203,10 @@ fn handle_tool_call(req: &JsonRpcRequest) -> serde_json::Value {
                                         "text": "Compilation check passed cleanly."
                                     }]
                                 }),
-                                Err(errors) => json!({
+                                Err(err) => json!({
                                     "content": [{
                                         "type": "text",
-                                        "text": format!("Type check found {} error(s): {:?}", errors.len(), errors)
+                                        "text": format!("Type check error: {:?}", err)
                                     }],
                                     "isError": true
                                 }),

@@ -3,7 +3,7 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange)]()
-[![Version](https://img.shields.io/badge/version-v0.5.0-purple)]()
+[![Version](https://img.shields.io/badge/version-v0.6.0--enterprise-purple)]()
 
 ## Overview
 
@@ -464,10 +464,76 @@ rune main() -> int {
 | `std.json` | JSON serialization & fast extraction | `parse`, `stringify`, `get`, `is_valid_json` |
 | `std.collections` | Functional array & map utilities | `range`, `contains_int`, `sum`, `first`, `last` |
 | `std.io` | Filesystem, environment, timestamps & logs | `read_file`, `write_file`, `exists`, `get_env`, `set_env`, `now`, `sleep`, `log_info` |
-| `std.db` | Embedded high-speed SQLite engine | `open`, `close`, `exec`, `query` |
-| `std.net` | HTTP microserver & non-blocking client | `get`, `post`, `serve` |
-| `std.crypto` | SHA-256 and Base64 encoding | `sha256`, `encode_base64`, `decode_base64` |
+| `std.db` | High-speed SQLite, Connection Pool & Parameterized SQL | `open`, `close`, `exec`, `query`, `exec_params`, `query_params`, `create_pool`, `acquire`, `release`, `transaction` |
+| `std.net` | HTTP client & Multi-threaded Router server | `get`, `post`, `serve`, `serve_router` |
+| `std.crypto` | Cryptographic digests & Base64 encoding | `sha256`, `encode_base64`, `decode_base64` |
 | `std.regex` | Regular expression matching & replacement | `test`, `replace` |
+| `std.schema` | Zero-dependency declarative data validation | `is_present`, `is_in_range`, `is_valid_email`, `validate_user` |
+| `std.telemetry` | High-precision metrics & Prometheus exporter | `inc_counter`, `get_counter`, `record_request`, `export_prometheus` |
+
+### Enterprise Microservice Architecture
+
+Caria v0.6.0 introduces production-ready infrastructure primitives for high-throughput microservices:
+
+#### 1. Scoped Memory Arena & Zero Leak Lifecycles
+Eliminates memory leaks and heap fragmentation in long-running services:
+```caria
+// Every incoming HTTP request enters an isolated allocation scope
+// Upon response dispatch, all temporary C-strings, parsed JSON buffers,
+// and SQL query results are reclaimed in O(1) time without GC pauses.
+```
+
+#### 2. Parameterized SQL & Connection Pooling
+Protection against SQL injection combined with reusable connection pools:
+```caria
+summon std.db
+
+rune handle_query(pool_id: int, user_id: int) -> txt {
+    conn := db.acquire(pool_id)
+    guard conn > 0 else {
+        ret "{\"error\": \"pool exhausted\"}"
+    }
+    
+    // Parameterized query using dynamic JSON arguments (safe from injection)
+    rows := db.query_params(conn, "SELECT name, role FROM users WHERE id = ?1", "[101]")
+    db.release(pool_id, conn)
+    ret rows
+}
+```
+
+#### 3. Declarative Schema Validation
+```caria
+summon std.schema
+
+rune validate_payload(raw_json: txt) -> flag {
+    ret schema.validate_user(raw_json) == 1
+}
+```
+
+#### 4. Prometheus Telemetry & Observability
+Native atomic metrics counters exposed over standard `/metrics` endpoints:
+```caria
+summon std.telemetry
+
+rune track_metrics() -> txt {
+    telemetry.inc_counter("http_requests_total")
+    telemetry.inc_counter("auth_success_total")
+    ret telemetry.export_prometheus()
+}
+```
+
+#### 5. Package Management & Deterministic Lockfiles (`caria pkg`)
+Manage dependencies, detect tampering, and ensure reproducible deployments:
+```bash
+# Initialize project configuration
+caria pkg init
+
+# Lock all project source files with cryptographic SHA-256 digests
+caria pkg lock
+
+# Verify project integrity prior to production deployment
+caria pkg verify
+```
 
 ### AI-Agent Sandboxing & Gas Metering
 
@@ -698,36 +764,30 @@ fn run_sandboxed_caria(script_path: &str) -> Result<i32, String> {
 }
 ```
 
-## Roadmap
+## Roadmap & Milestone Progress
 
-### Current Status (v0.1.x)
+### Delivered Capabilities (v0.6.0 Enterprise)
 
-- ✅ Basic arithmetic and logic
-- ✅ Control flow (if/while/for)
-- ✅ Variable declarations and assignments
-- ✅ AOT compilation to native binaries
-- ✅ FFI runtime with string and crypto functions
-- ⚠️ Arrays and maps (limited support)
-- ⚠️ Function calls (not yet implemented)
+- ✅ **Native Cranelift AOT & JIT**: Sub-second compilation to standalone machine code on `x86_64` and `aarch64`.
+- ✅ **Recursive Functions & Scoping**: First-class user-defined runes with lexical scoping and clean stack handling.
+- ✅ **Native Arrays & Maps**: Literals (`[1, 2, 3]`, `{"k": "v"}`), indexing, `.len`, and mutation.
+- ✅ **String Concatenation & Literals**: First-class string support with `+` operator and escape handling.
+- ✅ **Pipelining**: Unix-style pipe operator (`|>`) for expressive data flow.
+- ✅ **Advanced Control Flow**: `when` pattern matching (literals, ranges, wildcards), `guard` early exits, `unless` inverse guards, and `for..in` iteration.
+- ✅ **Instruction Gas Metering**: `--gas-limit <N>` atomic bounding for untrusted script execution.
+- ✅ **Scoped Memory Arena**: Thread-local allocation arenas with zero-leak request lifecycles.
+- ✅ **Enterprise SQLite Engine**: Parameterized queries immune to SQL injection, connection pooling (`std.db`).
+- ✅ **High-Throughput HTTP Engine**: Multi-threaded router with scoped request dispatch (`std.net`).
+- ✅ **Observability & Telemetry**: Native Prometheus metrics exporter (`std.telemetry`).
+- ✅ **Data Validation**: Declarative schema validation rules (`std.schema`).
+- ✅ **Package Integrity & Lockfile**: Deterministic SHA-256 package verification (`caria pkg [init|lock|verify]`).
+- ✅ **Developer Tooling**: Interactive JIT REPL (`caria repl`), file watcher (`caria dev`), native test runner (`caria test`), LSP (`caria lsp`), and MCP agent server (`caria mcp`).
 
-### Planned Features (v0.2.x)
+### Upcoming Horizons (v0.7.0+)
 
-- [ ] Full array and map support
-- [ ] User-defined function calls
-- [ ] String literals in script (currently integers only)
-- [ ] HTTP client FFI
-- [ ] File I/O FFI
-- [ ] Error handling (`try`/`catch`)
-- [ ] Type annotations and checking
-
-### Future (v1.0+)
-
-- [ ] Modules and imports
-- [ ] Closures and higher-order functions
-- [ ] Pattern matching
-- [ ] Async/await
-- [ ] Package manager
-- [ ] Standard library in Caria (not JS)
+- [ ] **Pure Static Single Binary Linker**: Drop external system linker dependency (`cc`/`gcc`) in favor of pure-Rust object emitting.
+- [ ] **Thread Channels & Microservice Message Queues**: Native async channels (`caria_channel`) for actor-style concurrency.
+- [ ] **Hardened WebAssembly Target**: Production wasm32-wasi builds for Cloudflare Workers and browser edge execution.
 
 ## Contributing
 

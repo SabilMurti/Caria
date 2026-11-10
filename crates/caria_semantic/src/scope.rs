@@ -187,6 +187,37 @@ impl Scope {
                 false,
             ),
         );
+
+        // Core FFI & Memory Arena Builtins
+        let any_fn = TypeInfo::Function {
+            params: vec![],
+            ret: Box::new(TypeInfo::Unknown),
+        };
+        let builtins = [
+            "say_str", "say_int", "say_float", "say_bool",
+            "scope_enter", "scope_exit", "free_ptr",
+            "metrics_inc", "metrics_get", "metrics_render_prometheus",
+            "db_open", "db_close", "db_exec", "db_query", "db_exec_params", "db_query_params",
+            "pool_create", "pool_acquire", "pool_release",
+            "http_get", "http_post", "http_serve", "http_serve_router",
+            "file_read", "file_write", "file_exists", "env_get", "env_set",
+            "time_now", "time_now_millis", "sleep_millis", "spawn",
+            "gas_set", "gas_get", "gas_tick",
+            "sha256", "crypto_sha256", "base64_encode", "base64_decode",
+            "regex_test", "regex_replace", "regex_match", "regex_match_all", "regex_find", "regex_split", "regex_escape",
+            "json_parse", "json_stringify", "json_get",
+            "str_concat", "concat", "str_len", "len", "str_split", "split",
+            "str_trim", "trim", "str_lower", "lower", "str_upper", "upper",
+            "str_contains", "contains", "str_substring", "substring", "str_replace", "replace",
+            "array_pop", "array_len", "array_get", "array_set", "array_free",
+            "map_alloc", "map_set", "map_get", "map_has", "map_len", "map_free",
+            "channel_create", "channel_send", "channel_recv", "channel_try_recv", "channel_close",
+            "hmac_sha256", "safe_equals", "jwt_sign", "jwt_verify",
+            "caria_smart_eq", "caria_smart_neq",
+        ];
+        for b in builtins {
+            self.symbols.insert(b.to_string(), (any_fn.clone(), false));
+        }
     }
 
     pub fn insert(&mut self, name: String, ty: TypeInfo, is_mutable: bool) {

@@ -1,0 +1,67 @@
+// ============================================================================
+// CARIA CONCURRENCY & CHANNEL TEST SUITE
+// ============================================================================
+// Run with: caria test tests/sync_channel_test.cria
+// ============================================================================
+
+summon std.sync
+
+rune test_channel_send_recv() -> int {
+    ch := make_channel(5)
+    if ch <= 0 {
+        ret 1
+    }
+    
+    // Send two messages
+    s1 := send(ch, "Message Alpha")
+    s2 := send(ch, "Message Beta")
+    if s1 != 0 {
+        close_channel(ch)
+        ret 2
+    }
+    if s2 != 0 {
+        close_channel(ch)
+        ret 3
+    }
+    
+    // Receive in FIFO order
+    m1 := recv(ch)
+    if m1 != "Message Alpha" {
+        close_channel(ch)
+        ret 4
+    }
+    
+    m2 := recv(ch)
+    if m2 != "Message Beta" {
+        close_channel(ch)
+        ret 5
+    }
+    
+    close_channel(ch)
+    ret 0
+}
+
+rune test_channel_try_recv() -> int {
+    ch := make_channel(2)
+    
+    // Empty channel should return empty string on try_recv
+    empty_msg := try_recv(ch)
+    if empty_msg != "" {
+        close_channel(ch)
+        ret 1
+    }
+    
+    send(ch, "Available")
+    msg := try_recv(ch)
+    if msg != "Available" {
+        close_channel(ch)
+        ret 2
+    }
+    
+    close_channel(ch)
+    ret 0
+}
+
+rune main() -> int {
+    ret 0
+}

@@ -21,4 +21,5 @@ caria_watch = { path = "../caria_watch" }
 serde_json = "1.0"
 ariadne = "0.3.0"
 tokio = { version = "1.0", features = ["full"] }
+sha2 = "0.10.8"
 # We don't strictly need more features for Phase 1 MVP

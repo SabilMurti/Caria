@@ -26,10 +26,10 @@ rune test_guard_clause() -> int {
 }
 
 rune test_unless_condition() -> int {
-    flag := 0
-    mut result := 0
-    unless flag {
-        result = 42
+    is_flag := 0
+    result := 0
+    unless is_flag {
+        result := 42
     }
     if result == 42 {
         ret 0
@@ -39,9 +39,9 @@ rune test_unless_condition() -> int {
 
 rune test_for_in_loop() -> int {
     items := [1, 2, 3]
-    mut total := 0
+    total := 0
     for x in items {
-        total = total + x
+        total := total + x
     }
     if total == 6 {
         ret 0

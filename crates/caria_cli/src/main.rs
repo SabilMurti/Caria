@@ -299,23 +299,7 @@ fn parse_and_check(file_path: &str, format_json: bool) -> caria_parser::ast::Pro
     let lexer = CariaLexer::new(&source);
     let mut parser = Parser::new(lexer);
     let mut program = match parser.parse_program() {
-        Ok(prog) => {
-            // [Phase A.2 Pipeline Hooks]
-            if let Err(errs) = caria_semantic::analyze(&prog) {
-                eprintln!("❌ Type/Semantic error(s) in '{}':", file_path);
-                for err in &errs {
-                    eprintln!("  • {:?}", err);
-                }
-                std::process::exit(1);
-            }
-            let ir_builder = caria_ir::IrBuilder::new();
-            let mut ir_prog = ir_builder.generate(&prog).unwrap();
-            
-            caria_ir::opt::optimize(&mut ir_prog);
-            caria_memory::manage_ir();
-            
-            prog
-        },
+        Ok(prog) => prog,
         Err(e) => {
             let (msg, span) = match e {
                 caria_parser::ParseError::UnexpectedToken(msg) => (msg, 0..0),
@@ -353,6 +337,20 @@ fn parse_and_check(file_path: &str, format_json: bool) -> caria_parser::ast::Pro
         eprintln!("Import Resolution Error: {}", e);
         std::process::exit(1);
     }
+
+    // [Semantic Analysis & Verification]
+    if let Err(errs) = caria_semantic::analyze(&program) {
+        eprintln!("❌ Type/Semantic error(s) in '{}':", file_path);
+        for err in &errs {
+            eprintln!("  • {:?}", err);
+        }
+        std::process::exit(1);
+    }
+
+    let ir_builder = caria_ir::IrBuilder::new();
+    let mut ir_prog = ir_builder.generate(&program).unwrap();
+    caria_ir::opt::optimize(&mut ir_prog);
+    caria_memory::manage_ir();
 
     let mut typechecker = caria_diagnostic::typecheck::TypeChecker::new();
     if let Err(e) = typechecker.check_program(&program) {
@@ -413,6 +411,10 @@ fn cmd_build_native(file_path: &str, format_json: bool) {
         .arg(&output_bin_path)
         .arg(&temp_obj_path)
         .arg(format!("-L{}", target_dir))
+        .arg("-L/usr/local/lib")
+        .arg("-L/usr/lib")
+        .arg("-L/root/projects/Caria/target/debug")
+        .arg("-L/root/projects/Caria/target/release")
         .arg("-lcaria_runtime")
         .arg("-lpthread")
         .arg("-ldl")
@@ -676,6 +678,118 @@ fn cmd_test(target_path: &str) {
     }
 }
 
+fn cmd_pkg(sub_args: &[String]) {
+    use sha2::{Sha256, Digest};
+    let subcmd = sub_args.first().map(|s| s.as_str()).unwrap_or("help");
+    match subcmd {
+        "init" => {
+            let config_path = Path::new("caria.json");
+            if !config_path.exists() {
+                let initial_config = serde_json::json!({
+                    "name": "my-caria-app",
+                    "version": "0.1.0",
+                    "entry": "src/main.cria",
+                    "dependencies": {},
+                    "autoload": {
+                        "App": "src"
+                    }
+                });
+                let _ = fs::write("caria.json", serde_json::to_string_pretty(&initial_config).unwrap());
+                println!("Created caria.json configuration.");
+            }
+            cmd_pkg(&["lock".to_string()]);
+        }
+        "lock" => {
+            println!("🔒 Generating enterprise caria.lock dependency checksums...");
+            let mut file_checksums = serde_json::Map::new();
+
+            fn scan_dir_checksums(dir: &Path, map: &mut serde_json::Map<String, serde_json::Value>) {
+                if let Ok(entries) = fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                            if !dir_name.starts_with('.') && dir_name != "target" {
+                                scan_dir_checksums(&path, map);
+                            }
+                        } else if path.extension().map_or(false, |ext| ext == "cria") {
+                            if let Ok(content) = fs::read(&path) {
+                                let mut hasher = Sha256::new();
+                                hasher.update(&content);
+                                let digest = format!("sha256:{:x}", hasher.finalize());
+                                map.insert(path.to_string_lossy().to_string(), serde_json::Value::String(digest));
+                            }
+                        }
+                    }
+                }
+            }
+
+            scan_dir_checksums(Path::new("."), &mut file_checksums);
+
+            let lock_data = serde_json::json!({
+                "lockfile_version": "1.0",
+                "caria_version": "0.6.0",
+                "generated_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                "checksums": file_checksums
+            });
+
+            if let Ok(content) = serde_json::to_string_pretty(&lock_data) {
+                let _ = fs::write("caria.lock", content);
+                println!("✅ Generated caria.lock ({} files locked with SHA-256).", file_checksums.len());
+            }
+        }
+        "verify" => {
+            println!("🔍 Verifying project integrity against caria.lock...");
+            let lock_path = Path::new("caria.lock");
+            if !lock_path.exists() {
+                eprintln!("❌ Error: caria.lock not found. Run 'caria pkg lock' first.");
+                std::process::exit(1);
+            }
+
+            let lock_content = fs::read_to_string(lock_path).expect("Failed to read caria.lock");
+            let lock_json: serde_json::Value = serde_json::from_str(&lock_content).expect("Invalid caria.lock format");
+            let checksums = lock_json.get("checksums").and_then(|c| c.as_object()).expect("Missing checksums in lockfile");
+
+            let mut passed = 0;
+            let mut failed = 0;
+
+            for (file_path_str, expected_hash_val) in checksums {
+                let expected_hash = expected_hash_val.as_str().unwrap_or("");
+                let p = Path::new(file_path_str);
+                if !p.exists() {
+                    eprintln!("  ✗ Missing file: {}", file_path_str);
+                    failed += 1;
+                    continue;
+                }
+                if let Ok(content) = fs::read(p) {
+                    let mut hasher = Sha256::new();
+                    hasher.update(&content);
+                    let actual_hash = format!("sha256:{:x}", hasher.finalize());
+                    if actual_hash == expected_hash {
+                        passed += 1;
+                    } else {
+                        eprintln!("  ✗ Checksum mismatch in {}: expected {}, got {}", file_path_str, expected_hash, actual_hash);
+                        failed += 1;
+                    }
+                }
+            }
+
+            if failed == 0 {
+                println!("✅ Integrity verified: {} files intact. 0 discrepancies.", passed);
+            } else {
+                eprintln!("❌ Integrity check FAILED: {} passed, {} corrupted/missing.", passed, failed);
+                std::process::exit(1);
+            }
+        }
+        _ => {
+            println!("Caria Package Manager (caria pkg):");
+            println!("  caria pkg init       Initialize caria.json and generate caria.lock");
+            println!("  caria pkg lock       Scan all source files and compute SHA-256 checksums in caria.lock");
+            println!("  caria pkg verify     Verify all project files against caria.lock integrity digests");
+        }
+    }
+}
+
 fn cmd_spec() {
     let spec = r#"Caria Programming Language Specification (v0.5.0)
  - Language Name: Caria
@@ -704,6 +818,7 @@ fn main() {
         println!("  caria run <file.cria> [args]         Compile and run natively (JIT)");
         println!("  caria build <file.cria> [--wasm]     Compile to native executable or WASM");
         println!("  caria test [path]                    Run native test suite");
+        println!("  caria pkg [init|lock|verify]         Manage packages and lockfile integrity");
         println!("  caria dev [file.cria]                Start live file watcher and re-run on save");
         println!("  caria repl                           Start interactive REPL shell");
         println!("  caria fmt <file.cria>                Format Caria source file");
@@ -819,6 +934,14 @@ fn main() {
                 ".".to_string()
             };
             cmd_test(&target_path);
+        }
+        "pkg" => {
+            let sub_args: Vec<String> = if args.len() >= 3 {
+                args[2..].to_vec()
+            } else {
+                Vec::new()
+            };
+            cmd_pkg(&sub_args);
         }
         "mcp" => {
             cmd_mcp();

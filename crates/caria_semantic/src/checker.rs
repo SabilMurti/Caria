@@ -398,6 +398,11 @@ impl TypeChecker {
                 let callee_ty = self.check_expression(callee);
                 match callee_ty {
                     TypeInfo::Function { params, ret } => {
+                        // If params is empty and return is Unknown, treat as flexible FFI / variadic builtin
+                        if params.is_empty() && *ret == TypeInfo::Unknown {
+                            return TypeInfo::Unknown;
+                        }
+
                         if params.len() != arg_types.len() {
                             self.errors.push(SemanticError::ArgumentCountMismatch {
                                 expected: params.len(),

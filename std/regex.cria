@@ -2,10 +2,10 @@
 // CARIA STANDARD LIBRARY - REGULAR EXPRESSIONS
 // ============================================================================
 
-rune test(pattern: txt, text: txt) -> flag {
+rune is_match(pattern: txt, text: txt) -> flag {
     ret regex_test(pattern, text)
 }
 
-rune replace(pattern: txt, text: txt, replacement: txt) -> txt {
+rune replace_all(pattern: txt, text: txt, replacement: txt) -> txt {
     ret regex_replace(pattern, text, replacement)
 }

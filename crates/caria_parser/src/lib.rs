@@ -11,12 +11,45 @@ pub enum ParseError {
 
 pub struct Parser<'a> {
     lexer: Peekable<CariaLexer<'a>>,
+    allow_trailing_closure: bool,
+}
+
+pub fn token_to_ident(token: &Token) -> Option<String> {
+    match token {
+        Token::Ident(s) => Some(s.clone()),
+        Token::Get => Some("get".into()),
+        Token::Post => Some("post".into()),
+        Token::Put => Some("put".into()),
+        Token::Patch => Some("patch".into()),
+        Token::Delete => Some("delete".into()),
+        Token::Transaction => Some("transaction".into()),
+        Token::Queue => Some("queue".into()),
+        Token::Cache => Some("cache".into()),
+        Token::Stream => Some("stream".into()),
+        Token::Socket => Some("socket".into()),
+        Token::Validate => Some("validate".into()),
+        Token::Model => Some("model".into()),
+        Token::View => Some("view".into()),
+        Token::Style => Some("style".into()),
+        Token::Client => Some("client".into()),
+        Token::Retry => Some("retry".into()),
+        Token::Timeout => Some("timeout".into()),
+        Token::Step => Some("step".into()),
+        Token::Times => Some("times".into()),
+        Token::Only => Some("only".into()),
+        Token::Except => Some("except".into()),
+        Token::Env => Some("env".into()),
+        Token::RouteGroup => Some("route".into()),
+        Token::ResourceRoute => Some("resource".into()),
+        _ => None,
+    }
 }
 
 impl<'a> Parser<'a> {
     pub fn new(lexer: CariaLexer<'a>) -> Self {
         Self {
             lexer: lexer.peekable(),
+            allow_trailing_closure: true,
         }
     }
 
@@ -176,7 +209,10 @@ impl<'a> Parser<'a> {
                         while let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
                             self.lexer.next(); // consume ,
                             match self.lexer.next() {
-                                Some((Ok(Token::Ident(n)), _)) => names.push(n),
+                                Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                                    Some(n) => names.push(n),
+                                    None => return Err(ParseError::UnexpectedToken("Expected identifier in destructuring".into())),
+                                },
                                 _ => return Err(ParseError::UnexpectedToken("Expected identifier in destructuring".into())),
                             }
                         }
@@ -261,7 +297,10 @@ impl<'a> Parser<'a> {
         self.expect(Token::Rune)?;
 
         let name = match self.lexer.next() {
-            Some((Ok(Token::Ident(n)), _)) => n,
+            Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                Some(n) => n,
+                None => return Err(ParseError::UnexpectedToken("Expected rune name".into())),
+            },
             _ => return Err(ParseError::UnexpectedToken("Expected rune name".into())),
         };
 
@@ -324,7 +363,10 @@ impl<'a> Parser<'a> {
             while let Some((Ok(token), _)) = self.lexer.peek() {
                 if token == &Token::RParen { break; }
                 let param_name = match self.lexer.next() {
-                    Some((Ok(Token::Ident(n)), _)) => n,
+                    Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                        Some(n) => n,
+                        None => return Err(ParseError::UnexpectedToken("Expected parameter name".into())),
+                    },
                     _ => return Err(ParseError::UnexpectedToken("Expected parameter name".into())),
                 };
                 self.expect(Token::Colon)?;
@@ -446,7 +488,10 @@ impl<'a> Parser<'a> {
 
     fn parse_if_expr(&mut self) -> Result<ast::IfExpr, ParseError> {
         self.expect(Token::If)?;
+        let prev = self.allow_trailing_closure;
+        self.allow_trailing_closure = false;
         let condition = Box::new(self.parse_expression(0)?);
+        self.allow_trailing_closure = prev;
         self.expect(Token::LBrace)?;
         let mut consequence = Vec::new();
         while let Some((Ok(token), _)) = self.lexer.peek() {
@@ -480,7 +525,10 @@ impl<'a> Parser<'a> {
 
     fn parse_unless_stmt(&mut self) -> Result<ast::UnlessStmt, ParseError> {
         self.expect(Token::Unless)?;
+        let prev = self.allow_trailing_closure;
+        self.allow_trailing_closure = false;
         let condition = Box::new(self.parse_expression(0)?);
+        self.allow_trailing_closure = prev;
         self.expect(Token::LBrace)?;
         let mut body = Vec::new();
         while let Some((Ok(token), _)) = self.lexer.peek() {
@@ -493,7 +541,10 @@ impl<'a> Parser<'a> {
 
     fn parse_guard_stmt(&mut self) -> Result<ast::GuardStmt, ParseError> {
         self.expect(Token::Guard)?;
+        let prev = self.allow_trailing_closure;
+        self.allow_trailing_closure = false;
         let condition = Box::new(self.parse_expression(0)?);
+        self.allow_trailing_closure = prev;
         self.expect(Token::Else)?;
         self.expect(Token::LBrace)?;
         let mut fallback = Vec::new();
@@ -507,7 +558,10 @@ impl<'a> Parser<'a> {
 
     fn parse_while_stmt(&mut self) -> Result<ast::WhileStmt, ParseError> {
         self.expect(Token::While)?;
+        let prev = self.allow_trailing_closure;
+        self.allow_trailing_closure = false;
         let condition = Box::new(self.parse_expression(0)?);
+        self.allow_trailing_closure = prev;
         self.expect(Token::LBrace)?;
         let mut body = Vec::new();
         while let Some((Ok(token), _)) = self.lexer.peek() {
@@ -522,7 +576,10 @@ impl<'a> Parser<'a> {
         self.expect(Token::For)?;
 
         let var1 = match self.lexer.next() {
-            Some((Ok(Token::Ident(n)), _)) => n,
+            Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                Some(n) => n,
+                None => return Err(ParseError::UnexpectedToken("Expected variable name in for loop".into())),
+            },
             _ => return Err(ParseError::UnexpectedToken("Expected variable name in for loop".into())),
         };
 
@@ -531,23 +588,36 @@ impl<'a> Parser<'a> {
         if let Some((Ok(Token::Comma), _)) = self.lexer.peek() {
             self.lexer.next();
             match self.lexer.next() {
-                Some((Ok(Token::Ident(n)), _)) => var2 = Some(n),
+                Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                    Some(n) => var2 = Some(n),
+                    None => return Err(ParseError::UnexpectedToken("Expected index variable".into())),
+                },
                 _ => return Err(ParseError::UnexpectedToken("Expected index variable".into())),
             }
         }
 
         self.expect(Token::In)?;
+        let prev = self.allow_trailing_closure;
+        self.allow_trailing_closure = false;
         let start_expr = self.parse_expression(0)?;
+        self.allow_trailing_closure = prev;
 
         // Range: for i in start..end [step N]
         if let Some((Ok(Token::Range), _)) = self.lexer.peek() {
             self.lexer.next(); // consume ..
+            let prev = self.allow_trailing_closure;
+            self.allow_trailing_closure = false;
             let end_expr = self.parse_expression(0)?;
+            self.allow_trailing_closure = prev;
 
             // Optional step
             let step = if let Some((Ok(Token::Step), _)) = self.lexer.peek() {
                 self.lexer.next(); // consume step
-                Some(Box::new(self.parse_expression(0)?))
+                let prev = self.allow_trailing_closure;
+                self.allow_trailing_closure = false;
+                let s = self.parse_expression(0)?;
+                self.allow_trailing_closure = prev;
+                Some(Box::new(s))
             } else {
                 None
             };
@@ -753,7 +823,10 @@ impl<'a> Parser<'a> {
                     let is_safe = matches!(self.lexer.peek(), Some((Ok(Token::SafeChain), _)));
                     self.lexer.next(); // consume . or ?.
                     let member = match self.lexer.next() {
-                        Some((Ok(Token::Ident(n)), _)) => n,
+                        Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                            Some(n) => n,
+                            None => return Err(ParseError::UnexpectedToken("Expected member name after .".into())),
+                        },
                         _ => return Err(ParseError::UnexpectedToken("Expected member name after .".into())),
                     };
                     // Method call?
@@ -928,7 +1001,10 @@ impl<'a> Parser<'a> {
                 while let Some((Ok(tok), _)) = self.lexer.peek() {
                     if tok == &Token::RParen { break; }
                     match self.lexer.next() {
-                        Some((Ok(Token::Ident(n)), _)) => params.push(n),
+                        Some((Ok(tok), _)) => match token_to_ident(&tok) {
+                            Some(n) => params.push(n),
+                            None => return Err(ParseError::UnexpectedToken("Expected parameter name in closure".into())),
+                        },
                         _ => return Err(ParseError::UnexpectedToken("Expected parameter name in closure".into())),
                     }
                     // optionally parse type: : Type
@@ -972,7 +1048,10 @@ impl<'a> Parser<'a> {
             // Grouped: (expr)
             Some((Ok(Token::LParen), _)) => {
                 self.lexer.next();
+                let prev = self.allow_trailing_closure;
+                self.allow_trailing_closure = true;
                 let expr = self.parse_expression(0)?;
+                self.allow_trailing_closure = prev;
                 self.expect(Token::RParen)?;
                 Ok(expr)
             }
@@ -1042,10 +1121,10 @@ impl<'a> Parser<'a> {
                 Ok(ast::Expression::Identifier("this".to_string()))
             }
 
-            // Identifier → may be function call
-            Some((Ok(Token::Ident(_)), _)) => {
+            // Identifier or contextual keyword → may be function call
+            Some((Ok(tok), _)) if token_to_ident(tok).is_some() => {
                 let name = match self.lexer.next() {
-                    Some((Ok(Token::Ident(n)), _)) => n,
+                    Some((Ok(t), _)) => token_to_ident(&t).unwrap(),
                     _ => unreachable!(),
                 };
 
@@ -1063,18 +1142,20 @@ impl<'a> Parser<'a> {
                     self.expect(Token::RParen)?;
 
                     // Trailing closure check for direct function calls
-                    if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
-                        self.lexer.next();
-                        let mut closure_body = Vec::new();
-                        while let Some((Ok(tok), _)) = self.lexer.peek() {
-                            if tok == &Token::RBrace { break; }
-                            closure_body.push(self.parse_statement()?);
+                    if self.allow_trailing_closure {
+                        if let Some((Ok(Token::LBrace), _)) = self.lexer.peek() {
+                            self.lexer.next();
+                            let mut closure_body = Vec::new();
+                            while let Some((Ok(tok), _)) = self.lexer.peek() {
+                                if tok == &Token::RBrace { break; }
+                                closure_body.push(self.parse_statement()?);
+                            }
+                            self.expect(Token::RBrace)?;
+                            args.push(ast::Expression::ClosureExpr {
+                                params: vec!["it".to_string()],
+                                body: closure_body,
+                            });
                         }
-                        self.expect(Token::RBrace)?;
-                        args.push(ast::Expression::ClosureExpr {
-                            params: vec!["it".to_string()],
-                            body: closure_body,
-                        });
                     }
 
                     return Ok(ast::Expression::CallExpr {
@@ -1159,8 +1240,8 @@ impl<'a> Parser<'a> {
     fn expect(&mut self, expected: Token) -> Result<(), ParseError> {
         match self.lexer.next() {
             Some((Ok(token), _)) if token == expected => Ok(()),
-            Some((Ok(token), _)) => Err(ParseError::UnexpectedToken(format!(
-                "Expected {:?}, got {:?}", expected, token
+            Some((Ok(token), span)) => Err(ParseError::UnexpectedToken(format!(
+                "Expected {:?}, got {:?} at span {}..{}", expected, token, span.start, span.end
             ))),
             Some((Err(_), span)) => Err(ParseError::UnexpectedToken(format!("Lexer error at {}..{}", span.start, span.end))),
             None => Err(ParseError::UnexpectedEOF(format!("Expected {:?}, got EOF", expected))),
@@ -1304,6 +1385,29 @@ mod tests {
             }
             _ => panic!("Expected Summon statement"),
         }
+    }
+
+    #[test]
+    fn test_parse_control_flow_nested_calls() {
+        let code = r#"
+rune test_hmac_computation() -> int {
+    mac := hmac("secret_key_123", "hello_world")
+    if mac == "" {
+        ret 1
+    }
+    if !constant_time_eq(mac, mac) {
+        ret 2
+    }
+    if constant_time_eq(mac, "tampered_mac") {
+        ret 3
+    }
+    ret 0
+}
+"#;
+        let lexer = CariaLexer::new(code);
+        let mut parser = Parser::new(lexer);
+        let prog = parser.parse_program().expect("Failed to parse control flow nested calls");
+        assert_eq!(prog.statements.len(), 1);
     }
 
 }

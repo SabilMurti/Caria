@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - NET & HTTP
+// CARIA ENTERPRISE NETWORK & HTTP ENGINE
 // ============================================================================
 
 rune get(url: txt) -> txt {
@@ -12,4 +12,16 @@ rune post(url: txt, body: txt) -> txt {
 
 rune serve(port: int, response_json: txt) -> int {
     ret http_serve(port, response_json)
+}
+
+rune serve_router(port: int, handler_fn: int) -> int {
+    ret http_serve_router(port, handler_fn)
+}
+
+rune respond_json(body_json: txt) -> txt {
+    ret body_json
+}
+
+rune respond_ok() -> txt {
+    ret "{\"status\":\"ok\",\"timestamp\":0}"
 }

@@ -1,0 +1,52 @@
+// ============================================================================
+// CARIA AUTH & JWT TEST SUITE
+// ============================================================================
+// Run with: caria test tests/auth_jwt_test.cria
+// ============================================================================
+
+summon std.auth
+
+rune test_hmac_computation() -> int {
+    mac := hmac("secret_key_123", "hello_world")
+    if mac == "" {
+        ret 1
+    }
+    // Verify constant time equality with itself
+    if !constant_time_eq(mac, mac) {
+        ret 2
+    }
+    // Non-equal
+    if constant_time_eq(mac, "tampered_mac") {
+        ret 3
+    }
+    ret 0
+}
+
+rune test_jwt_lifecycle() -> int {
+    secret := "super_secret_enterprise_signing_key_456"
+    payload := "{\"sub\":\"user_789\",\"role\":\"admin\",\"iss\":\"caria\"}"
+    
+    // Sign token
+    token := sign_jwt(payload, secret)
+    if token == "" {
+        ret 1
+    }
+    
+    // Verify with valid secret
+    decoded := verify_jwt(token, secret)
+    if decoded == "" {
+        ret 2
+    }
+    
+    // Verify with invalid secret must fail
+    tampered := verify_jwt(token, "wrong_secret_key")
+    if tampered != "" {
+        ret 3
+    }
+    
+    ret 0
+}
+
+rune main() -> int {
+    ret 0
+}

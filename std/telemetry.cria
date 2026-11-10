@@ -1,0 +1,23 @@
+// ============================================================================
+// CARIA ENTERPRISE TELEMETRY & OBSERVABILITY ENGINE
+// ============================================================================
+
+rune inc_counter(name: txt, count: int) -> int {
+    ret metrics_inc(name, count)
+}
+
+rune get_counter(name: txt) -> int {
+    ret metrics_get(name)
+}
+
+rune export_prometheus() -> txt {
+    ret metrics_render_prometheus()
+}
+
+rune record_request(endpoint: txt, status_code: int) -> int {
+    inc_counter("http_requests_total", 1)
+    if status_code >= 400 {
+        inc_counter("http_requests_failed_total", 1)
+    }
+    ret 0
+}

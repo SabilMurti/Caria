@@ -1,0 +1,27 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - CONCURRENCY & CHANNELS (std.sync)
+// ============================================================================
+
+rune make_channel(capacity: int) -> int {
+    ret channel_create(capacity)
+}
+
+rune channel() -> int {
+    ret channel_create(0)
+}
+
+rune send(chan_id: int, message: txt) -> int {
+    ret channel_send(chan_id, message)
+}
+
+rune recv(chan_id: int) -> txt {
+    ret channel_recv(chan_id)
+}
+
+rune try_recv(chan_id: int) -> txt {
+    ret channel_try_recv(chan_id)
+}
+
+rune close_channel(chan_id: int) -> int {
+    ret channel_close(chan_id)
+}

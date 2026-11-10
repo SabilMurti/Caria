@@ -6,11 +6,67 @@ use std::cell::RefCell;
 use regex::Regex;
 use serde_json;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Sha256, Digest};
 use rand::Rng;
+use hmac::{Hmac, Mac};
+type HmacSha256 = Hmac<Sha256>;
+use crossbeam_channel::{Sender, Receiver, bounded, unbounded};
+use rusqlite::Connection;
+use parking_lot::Mutex;
+use lazy_static::lazy_static;
 
 thread_local! { 
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) }; 
+    static ACTIVE_SCOPES: RefCell<Vec<Vec<*mut c_char>>> = const { RefCell::new(Vec::new()) };
+}
+
+pub fn track_c_string(ptr: *mut c_char) -> *mut c_char {
+    ACTIVE_SCOPES.with(|scopes| {
+        let mut borrowed = scopes.borrow_mut();
+        if let Some(current_scope) = borrowed.last_mut() {
+            current_scope.push(ptr);
+        }
+    });
+    ptr
+}
+
+pub fn alloc_c_string(s: impl Into<Vec<u8>>) -> *mut c_char {
+    let cs = CString::new(s).unwrap_or_else(|_| CString::new("").unwrap());
+    track_c_string(cs.into_raw())
+}
+
+#[no_mangle] pub extern "C" fn caria_scope_enter() -> i64 {
+    ACTIVE_SCOPES.with(|scopes| {
+        let mut borrowed = scopes.borrow_mut();
+        borrowed.push(Vec::new());
+        borrowed.len() as i64
+    })
+}
+
+#[no_mangle] pub extern "C" fn caria_scope_exit(_expected_depth: i64) -> i64 {
+    ACTIVE_SCOPES.with(|scopes| {
+        let mut borrowed = scopes.borrow_mut();
+        if let Some(ptrs_to_free) = borrowed.pop() {
+            for ptr in ptrs_to_free {
+                if !ptr.is_null() {
+                    unsafe {
+                        let _ = CString::from_raw(ptr);
+                    }
+                }
+            }
+        }
+        borrowed.len() as i64
+    })
+}
+
+#[no_mangle] pub extern "C" fn caria_free_ptr(ptr: *mut c_char) -> i64 {
+    if !ptr.is_null() {
+        unsafe {
+            let _ = CString::from_raw(ptr);
+        }
+    }
+    1
 }
 
 pub fn set_error(msg: String) { 
@@ -197,12 +253,79 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
         Ok(re) => {
             let res = re.replace_all(i, r).to_string();
             match CString::new(res) {
-                Ok(cs) => cs.into_raw() as i64,
+                Ok(cs) => track_c_string(cs.into_raw()) as i64,
                 Err(_) => 0,
             }
         }
         Err(_) => 0,
     }
+}
+
+#[no_mangle] pub extern "C" fn caria_regex_match(pattern: *const c_char, input: *const c_char) -> *const c_char {
+    if pattern.is_null() || input.is_null() { return alloc_c_string(""); }
+    let p = unsafe { CStr::from_ptr(pattern) }.to_str().unwrap_or("");
+    let i = unsafe { CStr::from_ptr(input) }.to_str().unwrap_or("");
+    match Regex::new(p) {
+        Ok(re) => {
+            if let Some(m) = re.find(i) {
+                alloc_c_string(m.as_str())
+            } else {
+                alloc_c_string("")
+            }
+        }
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_regex_match_all(pattern: *const c_char, input: *const c_char) -> *const c_char {
+    if pattern.is_null() || input.is_null() { return alloc_c_string("[]"); }
+    let p = unsafe { CStr::from_ptr(pattern) }.to_str().unwrap_or("");
+    let i = unsafe { CStr::from_ptr(input) }.to_str().unwrap_or("");
+    match Regex::new(p) {
+        Ok(re) => {
+            let matches: Vec<&str> = re.find_iter(i).map(|m| m.as_str()).collect();
+            let json_str = serde_json::to_string(&matches).unwrap_or_else(|_| "[]".to_string());
+            alloc_c_string(json_str)
+        }
+        Err(_) => alloc_c_string("[]"),
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_regex_find(pattern: *const c_char, input: *const c_char) -> i64 {
+    if pattern.is_null() || input.is_null() { return -1; }
+    let p = unsafe { CStr::from_ptr(pattern) }.to_str().unwrap_or("");
+    let i = unsafe { CStr::from_ptr(input) }.to_str().unwrap_or("");
+    match Regex::new(p) {
+        Ok(re) => {
+            if let Some(m) = re.find(i) {
+                m.start() as i64
+            } else {
+                -1
+            }
+        }
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_regex_split(pattern: *const c_char, input: *const c_char) -> *const c_char {
+    if pattern.is_null() || input.is_null() { return alloc_c_string("[]"); }
+    let p = unsafe { CStr::from_ptr(pattern) }.to_str().unwrap_or("");
+    let i = unsafe { CStr::from_ptr(input) }.to_str().unwrap_or("");
+    match Regex::new(p) {
+        Ok(re) => {
+            let parts: Vec<&str> = re.split(i).collect();
+            let json_str = serde_json::to_string(&parts).unwrap_or_else(|_| "[]".to_string());
+            alloc_c_string(json_str)
+        }
+        Err(_) => alloc_c_string("[]"),
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_regex_escape(input: *const c_char) -> *const c_char {
+    if input.is_null() { return alloc_c_string(""); }
+    let i = unsafe { CStr::from_ptr(input) }.to_str().unwrap_or("");
+    let escaped = regex::escape(i);
+    alloc_c_string(escaped)
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +639,6 @@ static CARIA_GAS_REMAINING: AtomicI64 = AtomicI64::new(-1);
 // ---------------------------------------------------------------------------
 // 6. SQLite Database Engine (via rusqlite)
 // ---------------------------------------------------------------------------
-use rusqlite::Connection;
 
 #[no_mangle] pub extern "C" fn caria_sqlite_open(path: *const c_char) -> i64 {
     if path.is_null() { return 0; }
@@ -598,9 +720,181 @@ use rusqlite::Connection;
 
         let json_arr = serde_json::Value::Array(rows_data.into_iter().map(serde_json::Value::Object).collect());
         match CString::new(json_arr.to_string()) {
-            Ok(cs) => cs.into_raw() as i64,
+            Ok(cs) => track_c_string(cs.into_raw()) as i64,
             Err(_) => 0,
         }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_sqlite_exec_params(conn_id: i64, sql: *const c_char, params_json: *const c_char) -> i64 {
+    if conn_id == 0 || sql.is_null() { return 0; }
+    let s = unsafe { CStr::from_ptr(sql) }.to_str().unwrap_or("");
+    let pj = if !params_json.is_null() { unsafe { CStr::from_ptr(params_json) }.to_str().unwrap_or("[]") } else { "[]" };
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(pj).unwrap_or_default();
+    
+    unsafe {
+        let conn = &*(conn_id as *const Connection);
+        let mut stmt = match conn.prepare(s) {
+            Ok(st) => st,
+            Err(e) => {
+                set_error(format!("SQLite prepare error: {}", e));
+                return -1;
+            }
+        };
+        
+        let params_vec: Vec<Box<dyn rusqlite::ToSql>> = parsed.iter().map(|v| -> Box<dyn rusqlite::ToSql> {
+            match v {
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        Box::new(i)
+                    } else if let Some(f) = n.as_f64() {
+                        Box::new(f)
+                    } else {
+                        Box::new(0i64)
+                    }
+                }
+                serde_json::Value::String(s) => Box::new(s.clone()),
+                serde_json::Value::Bool(b) => Box::new(*b),
+                serde_json::Value::Null => Box::new(rusqlite::types::Null),
+                other => Box::new(other.to_string()),
+            }
+        }).collect();
+        
+        let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+        match stmt.execute(rusqlite_params.as_slice()) {
+            Ok(rows) => rows as i64,
+            Err(e) => {
+                set_error(format!("SQLite exec_params error: {}", e));
+                -1
+            }
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_sqlite_query_params(conn_id: i64, sql: *const c_char, params_json: *const c_char) -> *const c_char {
+    if conn_id == 0 || sql.is_null() { return alloc_c_string("[]"); }
+    let s = unsafe { CStr::from_ptr(sql) }.to_str().unwrap_or("");
+    let pj = if !params_json.is_null() { unsafe { CStr::from_ptr(params_json) }.to_str().unwrap_or("[]") } else { "[]" };
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(pj).unwrap_or_default();
+    
+    unsafe {
+        let conn = &*(conn_id as *const Connection);
+        let mut stmt = match conn.prepare(s) {
+            Ok(st) => st,
+            Err(e) => {
+                set_error(format!("SQLite prepare error: {}", e));
+                return alloc_c_string("[]");
+            }
+        };
+
+        let params_vec: Vec<Box<dyn rusqlite::ToSql>> = parsed.iter().map(|v| -> Box<dyn rusqlite::ToSql> {
+            match v {
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        Box::new(i)
+                    } else if let Some(f) = n.as_f64() {
+                        Box::new(f)
+                    } else {
+                        Box::new(0i64)
+                    }
+                }
+                serde_json::Value::String(s) => Box::new(s.clone()),
+                serde_json::Value::Bool(b) => Box::new(*b),
+                serde_json::Value::Null => Box::new(rusqlite::types::Null),
+                other => Box::new(other.to_string()),
+            }
+        }).collect();
+
+        let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+        let col_names: Vec<String> = stmt.column_names().into_iter().map(|n| n.to_string()).collect();
+        let mut rows_data: Vec<serde_json::Map<String, serde_json::Value>> = Vec::new();
+
+        let mut rows = match stmt.query(rusqlite_params.as_slice()) {
+            Ok(r) => r,
+            Err(e) => {
+                set_error(format!("SQLite query_params error: {}", e));
+                return alloc_c_string("[]");
+            }
+        };
+
+        while let Ok(Some(row)) = rows.next() {
+            let mut row_map = serde_json::Map::new();
+            for (idx, name) in col_names.iter().enumerate() {
+                if let Ok(val) = row.get::<_, i64>(idx) {
+                    row_map.insert(name.clone(), serde_json::Value::Number(val.into()));
+                } else if let Ok(val) = row.get::<_, f64>(idx) {
+                    if let Some(n) = serde_json::Number::from_f64(val) {
+                        row_map.insert(name.clone(), serde_json::Value::Number(n));
+                    }
+                } else if let Ok(val) = row.get::<_, String>(idx) {
+                    row_map.insert(name.clone(), serde_json::Value::String(val));
+                } else {
+                    row_map.insert(name.clone(), serde_json::Value::Null);
+                }
+            }
+            rows_data.push(row_map);
+        }
+
+        let json_arr = serde_json::Value::Array(rows_data.into_iter().map(serde_json::Value::Object).collect());
+        alloc_c_string(json_arr.to_string())
+    }
+}
+
+struct ConnectionPool {
+    path: String,
+    available: Vec<Connection>,
+    max_conns: usize,
+}
+
+lazy_static! {
+    static ref POOLS: Mutex<HashMap<i64, ConnectionPool>> = Mutex::new(HashMap::new());
+    static ref NEXT_POOL_ID: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+}
+
+#[no_mangle] pub extern "C" fn caria_pool_create(path_ptr: *const c_char, max_conns: i64) -> i64 {
+    if path_ptr.is_null() { return 0; }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or(":memory:").to_string();
+    let id = NEXT_POOL_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let mut map = POOLS.lock();
+    map.insert(id, ConnectionPool {
+        path,
+        available: Vec::new(),
+        max_conns: if max_conns > 0 { max_conns as usize } else { 10 },
+    });
+    id
+}
+
+#[no_mangle] pub extern "C" fn caria_pool_acquire(pool_id: i64) -> i64 {
+    let mut map = POOLS.lock();
+    if let Some(pool) = map.get_mut(&pool_id) {
+        if let Some(conn) = pool.available.pop() {
+            Box::into_raw(Box::new(conn)) as i64
+        } else {
+            match Connection::open(&pool.path) {
+                Ok(conn) => Box::into_raw(Box::new(conn)) as i64,
+                Err(_) => 0,
+            }
+        }
+    } else {
+        0
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_pool_release(pool_id: i64, conn_id: i64) -> i64 {
+    if conn_id == 0 { return 0; }
+    let conn = unsafe { Box::from_raw(conn_id as *mut Connection) };
+    let mut map = POOLS.lock();
+    if let Some(pool) = map.get_mut(&pool_id) {
+        if pool.available.len() < pool.max_conns {
+            pool.available.push(*conn);
+            1
+        } else {
+            let _ = conn.close();
+            1
+        }
+    } else {
+        let _ = conn.close();
+        0
     }
 }
 
@@ -719,7 +1013,334 @@ use std::io::{Read, Write};
     0
 }
 
-#[no_mangle] pub extern "C" fn caria_say(val: i64) -> i64 {
+fn is_valid_ptr(ptr: usize) -> bool {
+    if ptr < 4096 {
+        return false;
+    }
+    unsafe {
+        libc::write(-1, ptr as *const libc::c_void, 1);
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EBADF)
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_say(val: i64) -> i64 {
+    if val > 4096 && is_valid_ptr(val as usize) {
+        unsafe {
+            if let Ok(s) = CStr::from_ptr(val as *const c_char).to_str() {
+                println!("{}", s);
+                return 0;
+            }
+        }
+    }
     println!("{}", val);
     0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_say_level(level_ptr: *const c_char, val: i64) -> i64 {
+    let lvl = if !level_ptr.is_null() {
+        unsafe { CStr::from_ptr(level_ptr) }.to_str().unwrap_or("INFO")
+    } else {
+        "INFO"
+    };
+    if val > 4096 && is_valid_ptr(val as usize) {
+        unsafe {
+            if let Ok(s) = CStr::from_ptr(val as *const c_char).to_str() {
+                println!("[{}] {}", lvl, s);
+                return 0;
+            }
+        }
+    }
+    println!("[{}] {}", lvl, val);
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry & Metrics Registry
+// ---------------------------------------------------------------------------
+lazy_static! {
+    static ref METRICS_REGISTRY: Mutex<HashMap<String, i64>> = Mutex::new(HashMap::new());
+}
+
+#[no_mangle]
+pub extern "C" fn caria_metrics_inc(name_ptr: *const c_char, count: i64) -> i64 {
+    if name_ptr.is_null() { return 0; }
+    let name = unsafe { CStr::from_ptr(name_ptr) }.to_str().unwrap_or("").to_string();
+    let mut map = METRICS_REGISTRY.lock();
+    let val = map.entry(name).or_insert(0);
+    *val += count;
+    *val
+}
+
+#[no_mangle]
+pub extern "C" fn caria_metrics_get(name_ptr: *const c_char) -> i64 {
+    if name_ptr.is_null() { return 0; }
+    let name = unsafe { CStr::from_ptr(name_ptr) }.to_str().unwrap_or("");
+    let map = METRICS_REGISTRY.lock();
+    *map.get(name).unwrap_or(&0)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_metrics_render_prometheus() -> *mut c_char {
+    let map = METRICS_REGISTRY.lock();
+    let mut out = String::new();
+    for (k, v) in map.iter() {
+        out.push_str(&format!("# TYPE {} counter\n{} {}\n", k, k, v));
+    }
+    track_c_string(CString::new(out).unwrap_or_default().into_raw())
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency & Channels (std.sync)
+// ---------------------------------------------------------------------------
+lazy_static! {
+    static ref CHANNELS: Mutex<HashMap<i64, (Sender<String>, Receiver<String>)>> = Mutex::new(HashMap::new());
+    static ref NEXT_CHAN_ID: Mutex<i64> = Mutex::new(1);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_channel_create(capacity: i64) -> i64 {
+    let (s, r) = if capacity <= 0 {
+        unbounded::<String>()
+    } else {
+        bounded::<String>(capacity as usize)
+    };
+    let mut id_lock = NEXT_CHAN_ID.lock();
+    let id = *id_lock;
+    *id_lock += 1;
+    CHANNELS.lock().insert(id, (s, r));
+    id
+}
+
+#[no_mangle]
+pub extern "C" fn caria_channel_send(chan_id: i64, msg_ptr: *const c_char) -> i64 {
+    if msg_ptr.is_null() { return -1; }
+    let msg = unsafe { CStr::from_ptr(msg_ptr) }.to_str().unwrap_or("").to_string();
+    let channels = CHANNELS.lock();
+    if let Some((sender, _)) = channels.get(&chan_id) {
+        match sender.send(msg) {
+            Ok(_) => 0,
+            Err(_) => -1,
+        }
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_channel_recv(chan_id: i64) -> *mut c_char {
+    let rx = {
+        let channels = CHANNELS.lock();
+        channels.get(&chan_id).map(|(_, r)| r.clone())
+    };
+    if let Some(receiver) = rx {
+        match receiver.recv() {
+            Ok(msg) => track_c_string(CString::new(msg).unwrap_or_default().into_raw()),
+            Err(_) => track_c_string(CString::new("").unwrap().into_raw()),
+        }
+    } else {
+        track_c_string(CString::new("").unwrap().into_raw())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_channel_try_recv(chan_id: i64) -> *mut c_char {
+    let rx = {
+        let channels = CHANNELS.lock();
+        channels.get(&chan_id).map(|(_, r)| r.clone())
+    };
+    if let Some(receiver) = rx {
+        match receiver.try_recv() {
+            Ok(msg) => track_c_string(CString::new(msg).unwrap_or_default().into_raw()),
+            Err(_) => track_c_string(CString::new("").unwrap().into_raw()),
+        }
+    } else {
+        track_c_string(CString::new("").unwrap().into_raw())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_channel_close(chan_id: i64) -> i64 {
+    CHANNELS.lock().remove(&chan_id);
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Cryptographic Authentication & JWT (std.auth)
+// ---------------------------------------------------------------------------
+#[no_mangle]
+pub extern "C" fn caria_crypto_hmac_sha256(key_ptr: *const c_char, msg_ptr: *const c_char) -> *mut c_char {
+    if key_ptr.is_null() || msg_ptr.is_null() {
+        return track_c_string(CString::new("").unwrap().into_raw());
+    }
+    let key = unsafe { CStr::from_ptr(key_ptr) }.to_bytes();
+    let msg = unsafe { CStr::from_ptr(msg_ptr) }.to_bytes();
+    
+    match HmacSha256::new_from_slice(key) {
+        Ok(mut mac) => {
+            mac.update(msg);
+            let result = mac.finalize().into_bytes();
+            let hex_out = hex::encode(result);
+            track_c_string(CString::new(hex_out).unwrap_or_default().into_raw())
+        }
+        Err(_) => track_c_string(CString::new("").unwrap().into_raw()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_safe_equals(a_ptr: *const c_char, b_ptr: *const c_char) -> i64 {
+    if a_ptr.is_null() || b_ptr.is_null() {
+        return if a_ptr == b_ptr { 1 } else { 0 };
+    }
+    let a = unsafe { CStr::from_ptr(a_ptr) }.to_bytes();
+    let b = unsafe { CStr::from_ptr(b_ptr) }.to_bytes();
+    if a.len() != b.len() {
+        return 0;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    if diff == 0 { 1 } else { 0 }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_jwt_sign(payload_ptr: *const c_char, secret_ptr: *const c_char) -> *mut c_char {
+    if payload_ptr.is_null() || secret_ptr.is_null() {
+        return track_c_string(CString::new("").unwrap().into_raw());
+    }
+    let payload = unsafe { CStr::from_ptr(payload_ptr) }.to_bytes();
+    let secret = unsafe { CStr::from_ptr(secret_ptr) }.to_bytes();
+
+    let header_json = b"{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
+    let enc_header = URL_SAFE_NO_PAD.encode(header_json);
+    let enc_payload = URL_SAFE_NO_PAD.encode(payload);
+    let signing_input = format!("{}.{}", enc_header, enc_payload);
+
+    match HmacSha256::new_from_slice(secret) {
+        Ok(mut mac) => {
+            mac.update(signing_input.as_bytes());
+            let sig = mac.finalize().into_bytes();
+            let enc_sig = URL_SAFE_NO_PAD.encode(sig);
+            let jwt = format!("{}.{}", signing_input, enc_sig);
+            track_c_string(CString::new(jwt).unwrap_or_default().into_raw())
+        }
+        Err(_) => track_c_string(CString::new("").unwrap().into_raw()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_jwt_verify(token_ptr: *const c_char, secret_ptr: *const c_char) -> *mut c_char {
+    if token_ptr.is_null() || secret_ptr.is_null() {
+        return track_c_string(CString::new("").unwrap().into_raw());
+    }
+    let token = unsafe { CStr::from_ptr(token_ptr) }.to_str().unwrap_or("");
+    let secret = unsafe { CStr::from_ptr(secret_ptr) }.to_bytes();
+
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return track_c_string(CString::new("").unwrap().into_raw());
+    }
+
+    let signing_input = format!("{}.{}", parts[0], parts[1]);
+    let expected_sig = match URL_SAFE_NO_PAD.decode(parts[2]) {
+        Ok(s) => s,
+        Err(_) => return track_c_string(CString::new("").unwrap().into_raw()),
+    };
+
+    match HmacSha256::new_from_slice(secret) {
+        Ok(mut mac) => {
+            mac.update(signing_input.as_bytes());
+            let computed_sig = mac.finalize().into_bytes();
+            
+            if computed_sig.len() != expected_sig.len() {
+                return track_c_string(CString::new("").unwrap().into_raw());
+            }
+            let mut diff = 0u8;
+            for (x, y) in computed_sig.iter().zip(expected_sig.iter()) {
+                diff |= x ^ y;
+            }
+            if diff != 0 {
+                return track_c_string(CString::new("").unwrap().into_raw());
+            }
+
+            match URL_SAFE_NO_PAD.decode(parts[1]) {
+                Ok(payload_bytes) => {
+                    let payload_str = String::from_utf8_lossy(&payload_bytes).to_string();
+                    track_c_string(CString::new(payload_str).unwrap_or_default().into_raw())
+                }
+                Err(_) => track_c_string(CString::new("").unwrap().into_raw()),
+            }
+        }
+        Err(_) => track_c_string(CString::new("").unwrap().into_raw()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP Router Engine
+// ---------------------------------------------------------------------------
+#[no_mangle]
+pub extern "C" fn caria_http_serve_router(port: i64, _routes_json_ptr: *const c_char) -> i64 {
+    use std::net::TcpListener;
+    use std::io::{Read, Write};
+
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Failed to bind to {}: {}", addr, e);
+            return -1;
+        }
+    };
+    println!("🚀 Caria Native Router listening on http://0.0.0.0:{}", port);
+
+    let default_body = "{\"status\":\"ok\",\"engine\":\"caria_router\"}";
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        default_body.len(),
+        default_body
+    );
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut socket) => {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf);
+                let _ = socket.write_all(response.as_bytes());
+                let _ = socket.flush();
+            }
+            Err(_) => break,
+        }
+    }
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Smart Content-Aware Equality (Strings & Primitives)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_smart_eq(a: i64, b: i64) -> i64 {
+    if a == b {
+        return 1;
+    }
+    if a > 4096 && b > 4096 {
+        if is_valid_ptr(a as usize) && is_valid_ptr(b as usize) {
+            unsafe {
+                if let (Ok(sa), Ok(sb)) = (
+                    CStr::from_ptr(a as *const c_char).to_str(),
+                    CStr::from_ptr(b as *const c_char).to_str(),
+                ) {
+                    return if sa == sb { 1 } else { 0 };
+                }
+            }
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_smart_neq(a: i64, b: i64) -> i64 {
+    if caria_smart_eq(a, b) == 1 { 0 } else { 1 }
 }

@@ -1,0 +1,51 @@
+// ============================================================================
+// CARIA ENTERPRISE SCHEMA & PAYLOAD VALIDATION ENGINE
+// ============================================================================
+
+summon std.string
+summon std.regex
+
+rune is_present(val: txt) -> flag {
+    if val == "" {
+        ret false
+    }
+    ret true
+}
+
+rune is_in_range(val: int, min_val: int, max_val: int) -> flag {
+    if val < min_val {
+        ret false
+    }
+    if val > max_val {
+        ret false
+    }
+    ret true
+}
+
+rune is_valid_email(email_str: txt) -> flag {
+    if email_str == "" {
+        ret false
+    }
+    has_at := str_contains(email_str, "@")
+    if has_at != 1 {
+        ret false
+    }
+    has_dot := str_contains(email_str, ".")
+    if has_dot != 1 {
+        ret false
+    }
+    ret true
+}
+
+rune validate_user(name: txt, email: txt, age: int) -> int {
+    guard is_present(name) else {
+        ret 1 // Name missing
+    }
+    guard is_valid_email(email) else {
+        ret 2 // Invalid email format
+    }
+    guard is_in_range(age, 18, 120) else {
+        ret 3 // Age out of allowed range
+    }
+    ret 0 // Valid
+}

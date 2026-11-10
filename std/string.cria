@@ -30,8 +30,8 @@ rune upper(s: txt) -> txt {
 }
 
 rune contains(haystack: txt, needle: txt) -> flag {
-    idx := str_contains(haystack, needle)
-    if idx >= 0 {
+    found := str_contains(haystack, needle)
+    if found == 1 {
         ret true
     }
     ret false

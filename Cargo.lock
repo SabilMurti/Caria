@@ -341,14 +341,8 @@ dependencies = [
  "caria_semantic",
  "caria_watch",
  "serde_json",
+ "sha2",
  "tokio",
-]
-
-[[package]]
-name = "caria_codegen_js"
-version = "0.1.0"
-dependencies = [
- "caria_parser",
 ]
 
 [[package]]
@@ -429,7 +423,6 @@ dependencies = [
 name = "caria_mcp"
 version = "0.1.0"
 dependencies = [
- "caria_codegen_js",
  "caria_diagnostic",
  "caria_lexer",
  "caria_parser",
@@ -472,12 +465,14 @@ dependencies = [
  "base64 0.22.1",
  "caria_memory",
  "chrono",
+ "crossbeam-channel",
  "dotenvy",
  "ed25519-dalek",
  "flate2",
  "hex",
  "hmac",
  "lazy_static",
+ "libc",
  "mysql_async",
  "parking_lot",
  "rand 0.8.7",

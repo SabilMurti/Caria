@@ -1,0 +1,23 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - AUTHENTICATION & JWT (std.auth)
+// ============================================================================
+
+rune hmac(key: txt, message: txt) -> txt {
+    ret hmac_sha256(key, message)
+}
+
+rune constant_time_eq(a: txt, b: txt) -> flag {
+    eq := safe_equals(a, b)
+    if eq == 1 {
+        ret true
+    }
+    ret false
+}
+
+rune sign_jwt(payload_json: txt, secret_key: txt) -> txt {
+    ret jwt_sign(payload_json, secret_key)
+}
+
+rune verify_jwt(token: txt, secret_key: txt) -> txt {
+    ret jwt_verify(token, secret_key)
+}
