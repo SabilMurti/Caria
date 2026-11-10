@@ -24,6 +24,7 @@ use flate2::write::GzEncoder;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{WebSocket, Message};
 use std::net::TcpStream;
+use chrono::{DateTime, Utc};
 
 thread_local! { 
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) }; 
@@ -1878,4 +1879,216 @@ pub extern "C" fn caria_sys_cwd() -> *mut c_char {
 #[no_mangle]
 pub extern "C" fn caria_sys_exit(code: i64) -> i64 {
     std::process::exit(code as i32);
+}
+
+// ---------------------------------------------------------------------------
+// 18. Chrono & Time Utilities (std.time)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_time_iso_now() -> *mut c_char {
+    let now = Utc::now().to_rfc3339();
+    alloc_c_string(now)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_time_format(fmt_ptr: *const c_char, timestamp_sec: i64) -> *mut c_char {
+    if fmt_ptr.is_null() { return alloc_c_string(""); }
+    let fmt_str = unsafe { CStr::from_ptr(fmt_ptr) }.to_str().unwrap_or("%Y-%m-%d %H:%M:%S");
+    if let Some(dt) = DateTime::from_timestamp(timestamp_sec, 0) {
+        let formatted = dt.format(fmt_str).to_string();
+        alloc_c_string(formatted)
+    } else {
+        alloc_c_string("")
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_time_parse_iso(iso_ptr: *const c_char) -> i64 {
+    if iso_ptr.is_null() { return -1; }
+    let s = unsafe { CStr::from_ptr(iso_ptr) }.to_str().unwrap_or("");
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        dt.timestamp()
+    } else {
+        -1
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 19. Safe Process Execution (std.process)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_process_exec(cmd_ptr: *const c_char, args_json_ptr: *const c_char) -> *mut c_char {
+    if cmd_ptr.is_null() {
+        return alloc_c_string("{\"code\":-1,\"stdout\":\"\",\"stderr\":\"null command\"}");
+    }
+    let cmd_str = unsafe { CStr::from_ptr(cmd_ptr) }.to_str().unwrap_or("");
+    let args_json = if !args_json_ptr.is_null() {
+        unsafe { CStr::from_ptr(args_json_ptr) }.to_str().unwrap_or("[]")
+    } else {
+        "[]"
+    };
+
+    let args: Vec<String> = serde_json::from_str(args_json).unwrap_or_default();
+    let mut command = std::process::Command::new(cmd_str);
+    for arg in &args {
+        command.arg(arg);
+    }
+
+    match command.output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let code = output.status.code().unwrap_or(-1);
+            let result = serde_json::json!({
+                "code": code,
+                "stdout": stdout,
+                "stderr": stderr
+            });
+            alloc_c_string(result.to_string())
+        }
+        Err(e) => {
+            let result = serde_json::json!({
+                "code": -1,
+                "stdout": "",
+                "stderr": e.to_string()
+            });
+            alloc_c_string(result.to_string())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 20. CSV & Structured Data Engine (std.csv)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_csv_parse(csv_ptr: *const c_char) -> *mut c_char {
+    if csv_ptr.is_null() { return alloc_c_string("[]"); }
+    let csv = unsafe { CStr::from_ptr(csv_ptr) }.to_str().unwrap_or("");
+    let mut lines = csv.lines();
+    let header_line = match lines.next() {
+        Some(h) if !h.trim().is_empty() => h,
+        _ => return alloc_c_string("[]"),
+    };
+
+    let headers: Vec<&str> = header_line.split(',').map(|s| s.trim()).collect();
+    let mut rows: Vec<serde_json::Map<String, serde_json::Value>> = Vec::new();
+
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { continue; }
+        let fields: Vec<&str> = trimmed.split(',').map(|s| s.trim()).collect();
+        let mut map = serde_json::Map::new();
+        for (i, &header) in headers.iter().enumerate() {
+            let val = if i < fields.len() { fields[i] } else { "" };
+            map.insert(header.to_string(), serde_json::Value::String(val.to_string()));
+        }
+        rows.push(map);
+    }
+
+    let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string());
+    alloc_c_string(json)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_csv_stringify(json_ptr: *const c_char) -> *mut c_char {
+    if json_ptr.is_null() { return alloc_c_string(""); }
+    let json_str = unsafe { CStr::from_ptr(json_ptr) }.to_str().unwrap_or("");
+    let val: serde_json::Value = match serde_json::from_str(json_str) {
+        Ok(v) => v,
+        Err(_) => return alloc_c_string(""),
+    };
+
+    let arr = match val.as_array() {
+        Some(a) if !a.is_empty() => a,
+        _ => return alloc_c_string(""),
+    };
+
+    let first_obj = match arr[0].as_object() {
+        Some(o) => o,
+        None => return alloc_c_string(""),
+    };
+
+    let headers: Vec<String> = first_obj.keys().cloned().collect();
+    let mut lines = Vec::new();
+    lines.push(headers.join(","));
+
+    for item in arr {
+        if let Some(obj) = item.as_object() {
+            let row: Vec<String> = headers.iter().map(|h| {
+                match obj.get(h) {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(serde_json::Value::Number(n)) => n.to_string(),
+                    Some(serde_json::Value::Bool(b)) => b.to_string(),
+                    _ => String::new(),
+                }
+            }).collect();
+            lines.push(row.join(","));
+        }
+    }
+
+    alloc_c_string(lines.join("\n"))
+}
+
+// ---------------------------------------------------------------------------
+// 21. Dynamic HTTP Route Registry & In-Memory Dispatcher
+// ---------------------------------------------------------------------------
+
+struct NativeRoute {
+    method: String,
+    path: String,
+    handler_fn: extern "C" fn(i64) -> i64,
+}
+
+lazy_static! {
+    static ref NATIVE_ROUTES: Mutex<Vec<NativeRoute>> = Mutex::new(Vec::new());
+}
+
+#[no_mangle]
+pub extern "C" fn caria_http_route_register(method_ptr: *const c_char, path_ptr: *const c_char, fn_ptr: i64) -> i64 {
+    if method_ptr.is_null() || path_ptr.is_null() || fn_ptr == 0 { return -1; }
+    let method = unsafe { CStr::from_ptr(method_ptr) }.to_str().unwrap_or("GET").to_uppercase();
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("/").to_string();
+    let handler_fn: extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(fn_ptr as usize) };
+
+    let mut routes = NATIVE_ROUTES.lock();
+    routes.push(NativeRoute { method, path, handler_fn });
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_http_route_dispatch(method_ptr: *const c_char, path_ptr: *const c_char, body_ptr: *const c_char) -> *mut c_char {
+    if method_ptr.is_null() || path_ptr.is_null() {
+        return alloc_c_string("{\"status\":400,\"error\":\"invalid request\"}");
+    }
+    let req_method = unsafe { CStr::from_ptr(method_ptr) }.to_str().unwrap_or("GET").to_uppercase();
+    let req_path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("/");
+    let req_body = if !body_ptr.is_null() {
+        unsafe { CStr::from_ptr(body_ptr) }.to_str().unwrap_or("")
+    } else {
+        ""
+    };
+
+    let routes = NATIVE_ROUTES.lock();
+    for route in routes.iter() {
+        if route.method == req_method && route.path == req_path {
+            let req_json = serde_json::json!({
+                "method": req_method,
+                "path": req_path,
+                "body": req_body
+            });
+            let req_arg = alloc_c_string(req_json.to_string()) as i64;
+            let res_ptr = (route.handler_fn)(req_arg);
+            if res_ptr != 0 && is_valid_ptr(res_ptr as usize) {
+                let res_str = unsafe { CStr::from_ptr(res_ptr as *const c_char) }.to_str().unwrap_or("");
+                return alloc_c_string(res_str);
+            } else {
+                return alloc_c_string("{\"status\":200,\"result\":true}");
+            }
+        }
+    }
+
+    alloc_c_string("{\"status\":404,\"error\":\"route not found\"}")
 }

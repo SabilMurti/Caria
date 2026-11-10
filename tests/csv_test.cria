@@ -1,0 +1,24 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - CSV SERIALIZATION (std.csv)
+// ============================================================================
+
+summon std.csv
+
+rune test_csv_parse_and_stringify() -> int {
+    csv_raw := "id,name,role\n1,Alice,admin\n2,Bob,engineer"
+    parsed_json := csv.parse(csv_raw)
+
+    if len(parsed_json) == 0 {
+        say("✗ csv.parse produced empty output")
+        ret 1
+    }
+
+    // Convert back to CSV
+    reconstructed_csv := csv.stringify(parsed_json)
+    if len(reconstructed_csv) == 0 {
+        say("✗ csv.stringify produced empty output")
+        ret 2
+    }
+
+    ret 0
+}

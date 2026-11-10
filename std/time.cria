@@ -1,0 +1,23 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - TIME & CHRONO (std.time)
+// ============================================================================
+
+rune iso_now() -> txt {
+    ret time_iso_now()
+}
+
+rune format(fmt: txt, timestamp: int) -> txt {
+    ret time_format(fmt, timestamp)
+}
+
+rune parse_iso(iso_str: txt) -> int {
+    ret time_parse_iso(iso_str)
+}
+
+rune now() -> int {
+    ret time_now()
+}
+
+rune now_millis() -> int {
+    ret time_now_millis()
+}

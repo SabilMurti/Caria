@@ -1,0 +1,11 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - CSV SERIALIZATION (std.csv)
+// ============================================================================
+
+rune parse(csv_str: txt) -> txt {
+    ret csv_parse(csv_str)
+}
+
+rune stringify(json_str: txt) -> txt {
+    ret csv_stringify(json_str)
+}

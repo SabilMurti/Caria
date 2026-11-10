@@ -1,0 +1,7 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - PROCESS EXECUTION (std.process)
+// ============================================================================
+
+rune exec(cmd: txt, args_json: txt) -> txt {
+    ret process_exec(cmd, args_json)
+}

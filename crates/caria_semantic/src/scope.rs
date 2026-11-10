@@ -223,6 +223,9 @@ impl Scope {
             "file_append", "file_remove", "dir_create", "dir_remove", "dir_list", "file_size", "file_copy",
             "gzip_compress", "gzip_decompress",
             "sys_os", "sys_arch", "sys_cpu_count", "sys_cwd", "sys_exit",
+            "time_iso_now", "time_format", "time_parse_iso",
+            "process_exec", "csv_parse", "csv_stringify",
+            "http_route", "http_dispatch",
             "caria_smart_eq", "caria_smart_neq",
         ];
         for b in builtins {

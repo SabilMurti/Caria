@@ -347,6 +347,22 @@ impl CariaCompiler {
         add_symbol!("caria_sys_cwd", caria_runtime::ffi_aot::caria_sys_cwd);
         add_symbol!("caria_sys_exit", caria_runtime::ffi_aot::caria_sys_exit);
 
+        // Time & Chrono
+        add_symbol!("caria_time_iso_now", caria_runtime::ffi_aot::caria_time_iso_now);
+        add_symbol!("caria_time_format", caria_runtime::ffi_aot::caria_time_format);
+        add_symbol!("caria_time_parse_iso", caria_runtime::ffi_aot::caria_time_parse_iso);
+
+        // Safe Subprocess Execution
+        add_symbol!("caria_process_exec", caria_runtime::ffi_aot::caria_process_exec);
+
+        // CSV Engine
+        add_symbol!("caria_csv_parse", caria_runtime::ffi_aot::caria_csv_parse);
+        add_symbol!("caria_csv_stringify", caria_runtime::ffi_aot::caria_csv_stringify);
+
+        // Dynamic HTTP Router
+        add_symbol!("caria_http_route_register", caria_runtime::ffi_aot::caria_http_route_register);
+        add_symbol!("caria_http_route_dispatch", caria_runtime::ffi_aot::caria_http_route_dispatch);
+
         Ok(())
     }
 
@@ -753,6 +769,18 @@ impl CariaCompiler {
             "sys_cpu_count" => "caria_sys_cpu_count",
             "sys_cwd" => "caria_sys_cwd",
             "sys_exit" => "caria_sys_exit",
+            // Time & Chrono
+            "time_iso_now" => "caria_time_iso_now",
+            "time_format" => "caria_time_format",
+            "time_parse_iso" => "caria_time_parse_iso",
+            // Process
+            "process_exec" => "caria_process_exec",
+            // CSV
+            "csv_parse" => "caria_csv_parse",
+            "csv_stringify" => "caria_csv_stringify",
+            // HTTP Router Dispatch
+            "http_route" => "caria_http_route_register",
+            "http_dispatch" => "caria_http_route_dispatch",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
@@ -1236,7 +1264,18 @@ impl CariaCompiler {
             
             // --- Identifier ---
             caria_parser::ast::Expression::Identifier(name) => {
-                ctx.use_variable(name, builder)
+                if let Ok(val) = ctx.use_variable(name, builder) {
+                    Ok(val)
+                } else if let Some(&func_id) = self.function_ids.get(name) {
+                    let local_callee = match self.module_mut() {
+                        CariaModule::Jit(jit) => jit.declare_func_in_func(func_id, builder.func),
+                        CariaModule::Object(obj) => obj.declare_func_in_func(func_id, builder.func),
+                    };
+                    let func_addr = builder.ins().func_addr(types::I64, local_callee);
+                    Ok(func_addr)
+                } else {
+                    ctx.use_variable(name, builder)
+                }
             }
             
             // --- Binary operations ---

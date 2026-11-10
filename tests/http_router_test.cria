@@ -1,0 +1,26 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - HTTP ROUTER DISPATCH
+// ============================================================================
+
+rune sample_handler(req: txt) -> txt {
+    ret "{\"status\":200,\"message\":\"hello from native rune\"}"
+}
+
+rune test_router_dispatch_flow() -> int {
+    // Dispatch before route registered should return 404
+    initial_res := http_dispatch("GET", "/api/v1/health", "")
+    if len(initial_res) == 0 {
+        ret 1
+    }
+
+    // Register route and dispatch
+    http_route("GET", "/api/v1/health", sample_handler)
+    res := http_dispatch("GET", "/api/v1/health", "")
+
+    if len(res) == 0 {
+        say("✗ http_dispatch returned empty response")
+        ret 2
+    }
+
+    ret 0
+}

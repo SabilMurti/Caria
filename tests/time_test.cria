@@ -1,0 +1,38 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - TIME & CHRONO (std.time)
+// ============================================================================
+
+summon std.time
+
+rune test_time_iso_lifecycle() -> int {
+    iso := time.iso_now()
+    if len(iso) == 0 {
+        say("✗ time.iso_now() returned empty string")
+        ret 1
+    }
+
+    // Parse the generated ISO string back to timestamp
+    ts := time.parse_iso(iso)
+    if ts <= 0 {
+        say("✗ time.parse_iso failed on iso_now output")
+        ret 2
+    }
+
+    // Format known timestamp: 1700000000 -> 2023-11-14
+    formatted := time.format("%Y-%m-%d", 1700000000)
+    if formatted != "2023-11-14" {
+        say("✗ time.format mismatch: expected 2023-11-14")
+        ret 3
+    }
+    ret 0
+}
+
+rune test_time_now_monotonic() -> int {
+    t1 := time.now_millis()
+    t2 := time.now_millis()
+    if t2 < t1 {
+        say("✗ time.now_millis inverted timestamp")
+        ret 1
+    }
+    ret 0
+}

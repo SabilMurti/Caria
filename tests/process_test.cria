@@ -1,0 +1,17 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - PROCESS EXECUTION (std.process)
+// ============================================================================
+
+summon std.process
+
+rune test_process_execution_echo() -> int {
+    args := "[\"hello\", \"caria\"]"
+    output := process.exec("echo", args)
+
+    if len(output) == 0 {
+        say("✗ process.exec returned empty output")
+        ret 1
+    }
+
+    ret 0
+}
