@@ -1,0 +1,98 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - ADVANCED CRYPTOGRAPHY (std.crypto)
+// ============================================================================
+
+summon std.crypto
+
+rune test_sha512_computation() -> int {
+    input := "hello world"
+    hash := crypto.sha512(input)
+    
+    // Known SHA-512 for "hello world" is 128 characters long
+    if len(hash) != 128 {
+        say("✗ Expected 128 hex chars for SHA-512")
+        ret 1
+    }
+    ret 0
+}
+
+rune test_argon2_password_hashing() -> int {
+    password := "super_secure_enterprise_password_2026"
+    hash := crypto.hash_password(password)
+    
+    if len(hash) == 0 {
+        say("✗ Argon2 password hashing failed")
+        ret 1
+    }
+    
+    is_valid := crypto.verify_password(password, hash)
+    if !is_valid {
+        say("✗ Argon2 password verification failed on matching password")
+        ret 2
+    }
+    
+    is_invalid := crypto.verify_password("wrong_password", hash)
+    if is_invalid {
+        say("✗ Argon2 password verification succeeded on incorrect password")
+        ret 3
+    }
+    ret 0
+}
+
+rune test_aes_gcm_authenticated_encryption() -> int {
+    key := "master_secret_encryption_key_32"
+    secret_message := "CONFIDENTIAL_ENTERPRISE_PAYLOAD_9921"
+    
+    encrypted := crypto.aes_encrypt(key, secret_message)
+    if len(encrypted) == 0 {
+        say("✗ AES-GCM encryption failed")
+        ret 1
+    }
+    
+    decrypted := crypto.aes_decrypt(key, encrypted)
+    if decrypted != secret_message {
+        say("✗ AES-GCM decryption mismatch")
+        ret 2
+    }
+    
+    wrong_decrypted := crypto.aes_decrypt("wrong_key", encrypted)
+    if wrong_decrypted == secret_message {
+        say("✗ Decryption with invalid key should not match plaintext")
+        ret 3
+    }
+    ret 0
+}
+
+rune test_uuid_and_random_hex() -> int {
+    uuid1 := crypto.uuid_v4()
+    uuid2 := crypto.uuid_v4()
+    
+    if len(uuid1) != 36 {
+        say("✗ Invalid UUID v4 length")
+        ret 1
+    }
+    
+    if uuid1 == uuid2 {
+        say("✗ Two consecutively generated UUIDs collision!")
+        ret 2
+    }
+    
+    r_hex := crypto.random_hex(16)
+    if len(r_hex) != 32 {
+        say("✗ Random hex length expected 32 (16 bytes)")
+        ret 3
+    }
+    ret 0
+}
+
+rune test_hex_codec() -> int {
+    original := "Caria Native Steel"
+    encoded := crypto.hex_encode(original)
+    decoded := crypto.hex_decode(encoded)
+    
+    if decoded != original {
+        say("✗ Hex encode/decode roundtrip mismatch")
+        ret 1
+    }
+    ret 0
+}

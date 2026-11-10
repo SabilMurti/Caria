@@ -1,0 +1,19 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - REAL-TIME WEBSOCKETS (std.ws)
+// ============================================================================
+
+rune connect(url: txt) -> int {
+    ret ws_connect(url)
+}
+
+rune send(ws_id: int, msg: txt) -> int {
+    ret ws_send(ws_id, msg)
+}
+
+rune recv(ws_id: int) -> txt {
+    ret ws_recv(ws_id)
+}
+
+rune close(ws_id: int) -> int {
+    ret ws_close(ws_id)
+}

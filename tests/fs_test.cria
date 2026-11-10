@@ -1,0 +1,90 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - FILESYSTEM OPERATIONS (std.fs)
+// ============================================================================
+
+summon std.fs
+
+rune test_fs_file_lifecycle() -> int {
+    test_path := "/tmp/caria_test_file.txt"
+    content := "Hello Caria Filesystem!\n"
+    
+    // Write
+    write_res := fs.write(test_path, content)
+    if write_res != 0 {
+        say("✗ fs.write failed")
+        ret 1
+    }
+    
+    // Exists
+    exists_flag := fs.exists(test_path)
+    if !exists_flag {
+        say("✗ fs.exists returned false for written file")
+        ret 2
+    }
+    
+    // Read
+    read_content := fs.read(test_path)
+    if read_content != content {
+        say("✗ fs.read content mismatch")
+        ret 3
+    }
+    
+    // Append
+    append_data := "Second line appended.\n"
+    append_res := fs.append(test_path, append_data)
+    if append_res != 0 {
+        say("✗ fs.append failed")
+        ret 4
+    }
+    
+    expected_total := "Hello Caria Filesystem!\nSecond line appended.\n"
+    after_append := fs.read(test_path)
+    if after_append != expected_total {
+        say("✗ fs.read after append mismatch")
+        ret 5
+    }
+    
+    // Size
+    f_size := fs.size(test_path)
+    if f_size <= 0 {
+        say("✗ fs.size returned invalid size")
+        ret 6
+    }
+    
+    // Remove
+    rm_res := fs.remove(test_path)
+    if rm_res != 0 {
+        say("✗ fs.remove failed")
+        ret 7
+    }
+    
+    still_exists := fs.exists(test_path)
+    if still_exists {
+        say("✗ File still exists after remove")
+        ret 8
+    }
+    ret 0
+}
+
+rune test_fs_directory_lifecycle() -> int {
+    test_dir := "/tmp/caria_test_dir/nested"
+    res_mkdir := fs.mkdir(test_dir)
+    if res_mkdir != 0 {
+        say("✗ fs.mkdir failed")
+        ret 1
+    }
+    
+    f_inside := "/tmp/caria_test_dir/nested/a.txt"
+    fs.write(f_inside, "nested content")
+    
+    list_json := fs.list(test_dir)
+    if list_json == "[]" {
+        say("✗ fs.list returned empty list for non-empty dir")
+        ret 2
+    }
+    
+    // Clean up
+    fs.remove(f_inside)
+    fs.rmdir("/tmp/caria_test_dir")
+    ret 0
+}

@@ -305,6 +305,48 @@ impl CariaCompiler {
         add_symbol!("caria_smart_eq", caria_runtime::ffi_aot::caria_smart_eq);
         add_symbol!("caria_smart_neq", caria_runtime::ffi_aot::caria_smart_neq);
 
+        // Advanced Cryptography Suite
+        add_symbol!("caria_crypto_sha512", caria_runtime::ffi_aot::caria_crypto_sha512);
+        add_symbol!("caria_crypto_argon2_hash", caria_runtime::ffi_aot::caria_crypto_argon2_hash);
+        add_symbol!("caria_crypto_argon2_verify", caria_runtime::ffi_aot::caria_crypto_argon2_verify);
+        add_symbol!("caria_crypto_aes_encrypt", caria_runtime::ffi_aot::caria_crypto_aes_encrypt);
+        add_symbol!("caria_crypto_aes_decrypt", caria_runtime::ffi_aot::caria_crypto_aes_decrypt);
+        add_symbol!("caria_crypto_uuid_v4", caria_runtime::ffi_aot::caria_crypto_uuid_v4);
+        add_symbol!("caria_crypto_random_hex", caria_runtime::ffi_aot::caria_crypto_random_hex);
+        add_symbol!("caria_hex_encode", caria_runtime::ffi_aot::caria_hex_encode);
+        add_symbol!("caria_hex_decode", caria_runtime::ffi_aot::caria_hex_decode);
+
+        // Real-Time WebSockets
+        add_symbol!("caria_ws_connect", caria_runtime::ffi_aot::caria_ws_connect);
+        add_symbol!("caria_ws_send", caria_runtime::ffi_aot::caria_ws_send);
+        add_symbol!("caria_ws_recv", caria_runtime::ffi_aot::caria_ws_recv);
+        add_symbol!("caria_ws_close", caria_runtime::ffi_aot::caria_ws_close);
+
+        // Native Task Scheduler
+        add_symbol!("caria_task_spawn", caria_runtime::ffi_aot::caria_task_spawn);
+        add_symbol!("caria_task_join", caria_runtime::ffi_aot::caria_task_join);
+        add_symbol!("caria_task_sleep", caria_runtime::ffi_aot::caria_task_sleep);
+
+        // Enterprise Filesystem
+        add_symbol!("caria_file_append", caria_runtime::ffi_aot::caria_file_append);
+        add_symbol!("caria_file_remove", caria_runtime::ffi_aot::caria_file_remove);
+        add_symbol!("caria_dir_create", caria_runtime::ffi_aot::caria_dir_create);
+        add_symbol!("caria_dir_remove", caria_runtime::ffi_aot::caria_dir_remove);
+        add_symbol!("caria_dir_list", caria_runtime::ffi_aot::caria_dir_list);
+        add_symbol!("caria_file_size", caria_runtime::ffi_aot::caria_file_size);
+        add_symbol!("caria_file_copy", caria_runtime::ffi_aot::caria_file_copy);
+
+        // GZIP Compression
+        add_symbol!("caria_gzip_compress", caria_runtime::ffi_aot::caria_gzip_compress);
+        add_symbol!("caria_gzip_decompress", caria_runtime::ffi_aot::caria_gzip_decompress);
+
+        // System Diagnostics
+        add_symbol!("caria_sys_os", caria_runtime::ffi_aot::caria_sys_os);
+        add_symbol!("caria_sys_arch", caria_runtime::ffi_aot::caria_sys_arch);
+        add_symbol!("caria_sys_cpu_count", caria_runtime::ffi_aot::caria_sys_cpu_count);
+        add_symbol!("caria_sys_cwd", caria_runtime::ffi_aot::caria_sys_cwd);
+        add_symbol!("caria_sys_exit", caria_runtime::ffi_aot::caria_sys_exit);
+
         Ok(())
     }
 
@@ -675,6 +717,42 @@ impl CariaCompiler {
             "regex_find" => "caria_regex_find",
             "regex_split" => "caria_regex_split",
             "regex_escape" => "caria_regex_escape",
+            // Advanced Cryptography
+            "sha512" | "crypto_sha512" => "caria_crypto_sha512",
+            "argon2_hash" | "hash_password" => "caria_crypto_argon2_hash",
+            "argon2_verify" | "verify_password" => "caria_crypto_argon2_verify",
+            "aes_encrypt" | "aes_gcm_encrypt" => "caria_crypto_aes_encrypt",
+            "aes_decrypt" | "aes_gcm_decrypt" => "caria_crypto_aes_decrypt",
+            "uuid_v4" | "sys_uuid_v4" => "caria_crypto_uuid_v4",
+            "random_bytes_hex" | "random_hex" => "caria_crypto_random_hex",
+            "hex_encode" | "sys_hex_encode" => "caria_hex_encode",
+            "hex_decode" | "sys_hex_decode" => "caria_hex_decode",
+            // WebSockets
+            "ws_connect" => "caria_ws_connect",
+            "ws_send" => "caria_ws_send",
+            "ws_recv" => "caria_ws_recv",
+            "ws_close" => "caria_ws_close",
+            // Task Scheduler
+            "task_spawn" => "caria_task_spawn",
+            "task_join" => "caria_task_join",
+            "task_sleep" => "caria_task_sleep",
+            // Filesystem
+            "file_append" => "caria_file_append",
+            "file_remove" => "caria_file_remove",
+            "dir_create" => "caria_dir_create",
+            "dir_remove" => "caria_dir_remove",
+            "dir_list" => "caria_dir_list",
+            "file_size" => "caria_file_size",
+            "file_copy" => "caria_file_copy",
+            // Compression
+            "gzip_compress" => "caria_gzip_compress",
+            "gzip_decompress" => "caria_gzip_decompress",
+            // System
+            "sys_os" => "caria_sys_os",
+            "sys_arch" => "caria_sys_arch",
+            "sys_cpu_count" => "caria_sys_cpu_count",
+            "sys_cwd" => "caria_sys_cwd",
+            "sys_exit" => "caria_sys_exit",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
@@ -1449,6 +1527,8 @@ impl CariaCompiler {
                 
                 if let caria_parser::ast::Expression::Identifier(ref name) = **callee {
                     self.call_named_function(name, &arg_vals, builder)
+                } else if let caria_parser::ast::Expression::MemberAccess { ref member, .. } = **callee {
+                    self.call_named_function(member, &arg_vals, builder)
                 } else {
                     Err("Dynamic expression callees not supported".into())
                 }

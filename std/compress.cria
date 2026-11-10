@@ -1,0 +1,11 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - GZIP COMPRESSION (std.compress)
+// ============================================================================
+
+rune compress(data: txt) -> txt {
+    ret gzip_compress(data)
+}
+
+rune decompress(compressed_b64: txt) -> txt {
+    ret gzip_decompress(compressed_b64)
+}

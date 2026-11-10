@@ -1,9 +1,46 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - CRYPTO & ENCODING
+// CARIA STANDARD LIBRARY - ENTERPRISE CRYPTO & ENCODING
 // ============================================================================
 
 rune sha256(data: txt) -> txt {
     ret crypto_sha256(data)
+}
+
+rune sha512(data: txt) -> txt {
+    ret crypto_sha512(data)
+}
+
+rune hash_password(password: txt) -> txt {
+    ret argon2_hash(password)
+}
+
+rune verify_password(password: txt, hash: txt) -> flag {
+    res := argon2_verify(password, hash)
+    ret res == 1
+}
+
+rune aes_encrypt(key: txt, plaintext: txt) -> txt {
+    ret aes_gcm_encrypt(key, plaintext)
+}
+
+rune aes_decrypt(key: txt, payload: txt) -> txt {
+    ret aes_gcm_decrypt(key, payload)
+}
+
+rune uuid_v4() -> txt {
+    ret sys_uuid_v4()
+}
+
+rune random_hex(count: int) -> txt {
+    ret random_bytes_hex(count)
+}
+
+rune hex_encode(data: txt) -> txt {
+    ret sys_hex_encode(data)
+}
+
+rune hex_decode(hex_str: txt) -> txt {
+    ret sys_hex_decode(hex_str)
 }
 
 rune encode_base64(data: txt) -> txt {

@@ -215,6 +215,14 @@ impl Scope {
             "hmac_sha256", "safe_equals", "jwt_sign", "jwt_verify",
             "http_put", "http_delete",
             "redis_connect", "redis_get", "redis_set", "redis_set_ex", "redis_del", "redis_incr", "redis_close",
+            "sha512", "crypto_sha512", "argon2_hash", "hash_password", "argon2_verify", "verify_password",
+            "aes_encrypt", "aes_gcm_encrypt", "aes_decrypt", "aes_gcm_decrypt",
+            "uuid_v4", "sys_uuid_v4", "random_bytes_hex", "random_hex", "hex_encode", "sys_hex_encode", "hex_decode", "sys_hex_decode",
+            "ws_connect", "ws_send", "ws_recv", "ws_close",
+            "task_spawn", "task_join", "task_sleep",
+            "file_append", "file_remove", "dir_create", "dir_remove", "dir_list", "file_size", "file_copy",
+            "gzip_compress", "gzip_decompress",
+            "sys_os", "sys_arch", "sys_cpu_count", "sys_cwd", "sys_exit",
             "caria_smart_eq", "caria_smart_neq",
         ];
         for b in builtins {

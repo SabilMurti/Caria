@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use regex::Regex;
 use serde_json;
 use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use sha2::{Sha256, Digest};
+use base64::engine::general_purpose::{URL_SAFE_NO_PAD, STANDARD};
+use sha2::{Sha256, Sha512, Digest};
 use rand::Rng;
 use hmac::{Hmac, Mac};
 type HmacSha256 = Hmac<Sha256>;
@@ -15,6 +15,15 @@ use crossbeam_channel::{Sender, Receiver, bounded, unbounded};
 use rusqlite::Connection;
 use parking_lot::Mutex;
 use lazy_static::lazy_static;
+use aes_gcm::{Aes256Gcm, Nonce};
+use argon2::password_hash::{SaltString, rand_core::OsRng};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use tungstenite::stream::MaybeTlsStream;
+use tungstenite::{WebSocket, Message};
+use std::net::TcpStream;
 
 thread_local! { 
     static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) }; 
@@ -502,14 +511,14 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
 }
 
 #[no_mangle] pub extern "C" fn caria_file_write(path: *const c_char, content: *const c_char) -> i64 {
-    if path.is_null() || content.is_null() { return 0; }
+    if path.is_null() || content.is_null() { return -1; }
     let p = unsafe { CStr::from_ptr(path) }.to_str().unwrap_or("");
     let c = unsafe { CStr::from_ptr(content) }.to_str().unwrap_or("");
     match std::fs::write(p, c) {
-        Ok(_) => 1,
+        Ok(_) => 0,
         Err(e) => {
             set_error(format!("Failed to write file '{}': {}", p, e));
-            0
+            -1
         }
     }
 }
@@ -1499,4 +1508,374 @@ pub extern "C" fn caria_smart_eq(a: i64, b: i64) -> i64 {
 #[no_mangle]
 pub extern "C" fn caria_smart_neq(a: i64, b: i64) -> i64 {
     if caria_smart_eq(a, b) == 1 { 0 } else { 1 }
+}
+
+// ---------------------------------------------------------------------------
+// 12. Advanced Cryptography Suite
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_sha512(data_ptr: *const c_char) -> *mut c_char {
+    if data_ptr.is_null() { return alloc_c_string(""); }
+    let s = unsafe { CStr::from_ptr(data_ptr) }.to_str().unwrap_or("");
+    let hash = format!("{:x}", Sha512::digest(s.as_bytes()));
+    alloc_c_string(hash)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_argon2_hash(password_ptr: *const c_char) -> *mut c_char {
+    if password_ptr.is_null() { return alloc_c_string(""); }
+    let password = unsafe { CStr::from_ptr(password_ptr) }.to_str().unwrap_or("");
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    match argon2.hash_password(password.as_bytes(), &salt) {
+        Ok(hash) => alloc_c_string(hash.to_string()),
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_argon2_verify(password_ptr: *const c_char, hash_ptr: *const c_char) -> i64 {
+    if password_ptr.is_null() || hash_ptr.is_null() { return 0; }
+    let password = unsafe { CStr::from_ptr(password_ptr) }.to_str().unwrap_or("");
+    let hash_str = unsafe { CStr::from_ptr(hash_ptr) }.to_str().unwrap_or("");
+    if let Ok(parsed_hash) = PasswordHash::new(hash_str) {
+        if Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok() {
+            return 1;
+        }
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_aes_encrypt(key_ptr: *const c_char, plaintext_ptr: *const c_char) -> *mut c_char {
+    use aes_gcm::aead::{Aead, KeyInit};
+    if key_ptr.is_null() || plaintext_ptr.is_null() { return alloc_c_string(""); }
+    let key_str = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let plaintext = unsafe { CStr::from_ptr(plaintext_ptr) }.to_str().unwrap_or("");
+    
+    let key_bytes = Sha256::digest(key_str.as_bytes());
+    let cipher = match Aes256Gcm::new_from_slice(&key_bytes) {
+        Ok(c) => c,
+        Err(_) => return alloc_c_string(""),
+    };
+    
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    
+    match cipher.encrypt(nonce, plaintext.as_bytes()) {
+        Ok(ciphertext) => {
+            let result = format!("{}:{}", hex::encode(nonce_bytes), hex::encode(ciphertext));
+            alloc_c_string(result)
+        }
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_aes_decrypt(key_ptr: *const c_char, payload_ptr: *const c_char) -> *mut c_char {
+    use aes_gcm::aead::{Aead, KeyInit};
+    if key_ptr.is_null() || payload_ptr.is_null() { return alloc_c_string(""); }
+    let key_str = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let payload = unsafe { CStr::from_ptr(payload_ptr) }.to_str().unwrap_or("");
+    
+    let parts: Vec<&str> = payload.split(':').collect();
+    if parts.len() != 2 { return alloc_c_string(""); }
+    
+    let nonce_bytes = match hex::decode(parts[0]) {
+        Ok(b) if b.len() == 12 => b,
+        _ => return alloc_c_string(""),
+    };
+    let ciphertext = match hex::decode(parts[1]) {
+        Ok(b) => b,
+        _ => return alloc_c_string(""),
+    };
+    
+    let key_bytes = Sha256::digest(key_str.as_bytes());
+    let cipher = match Aes256Gcm::new_from_slice(&key_bytes) {
+        Ok(c) => c,
+        Err(_) => return alloc_c_string(""),
+    };
+    
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    match cipher.decrypt(nonce, ciphertext.as_ref()) {
+        Ok(plaintext_bytes) => {
+            let s = String::from_utf8(plaintext_bytes).unwrap_or_default();
+            alloc_c_string(s)
+        }
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_uuid_v4() -> *mut c_char {
+    let mut b = [0u8; 16];
+    rand::thread_rng().fill(&mut b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let uuid_str = format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]
+    );
+    alloc_c_string(uuid_str)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_random_hex(count: i64) -> *mut c_char {
+    let len = count.clamp(0, 1024) as usize;
+    let mut bytes = vec![0u8; len];
+    rand::thread_rng().fill(&mut bytes[..]);
+    alloc_c_string(hex::encode(bytes))
+}
+
+#[no_mangle]
+pub extern "C" fn caria_hex_encode(data_ptr: *const c_char) -> *mut c_char {
+    if data_ptr.is_null() { return alloc_c_string(""); }
+    let s = unsafe { CStr::from_ptr(data_ptr) }.to_str().unwrap_or("");
+    alloc_c_string(hex::encode(s.as_bytes()))
+}
+
+#[no_mangle]
+pub extern "C" fn caria_hex_decode(hex_ptr: *const c_char) -> *mut c_char {
+    if hex_ptr.is_null() { return alloc_c_string(""); }
+    let s = unsafe { CStr::from_ptr(hex_ptr) }.to_str().unwrap_or("");
+    match hex::decode(s) {
+        Ok(bytes) => alloc_c_string(String::from_utf8(bytes).unwrap_or_default()),
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 13. Real-Time WebSocket Engine
+// ---------------------------------------------------------------------------
+
+lazy_static! {
+    static ref WS_CLIENTS: Mutex<HashMap<i64, WebSocket<MaybeTlsStream<TcpStream>>>> = Mutex::new(HashMap::new());
+    static ref NEXT_WS_ID: AtomicI64 = AtomicI64::new(1);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_ws_connect(url_ptr: *const c_char) -> i64 {
+    if url_ptr.is_null() { return -1; }
+    let url_str = unsafe { CStr::from_ptr(url_ptr) }.to_str().unwrap_or("");
+    match tungstenite::connect(url_str) {
+        Ok((socket, _response)) => {
+            let id = NEXT_WS_ID.fetch_add(1, Ordering::SeqCst);
+            WS_CLIENTS.lock().insert(id, socket);
+            id
+        }
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_ws_send(id: i64, msg_ptr: *const c_char) -> i64 {
+    if msg_ptr.is_null() { return -1; }
+    let mut guard = WS_CLIENTS.lock();
+    if let Some(socket) = guard.get_mut(&id) {
+        let msg = unsafe { CStr::from_ptr(msg_ptr) }.to_str().unwrap_or("");
+        match socket.send(Message::Text(msg.to_string())) {
+            Ok(_) => 0,
+            Err(_) => -1,
+        }
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_ws_recv(id: i64) -> *mut c_char {
+    let mut guard = WS_CLIENTS.lock();
+    if let Some(socket) = guard.get_mut(&id) {
+        match socket.read() {
+            Ok(Message::Text(text)) => alloc_c_string(text),
+            Ok(Message::Binary(bin)) => alloc_c_string(String::from_utf8_lossy(&bin).to_string()),
+            _ => alloc_c_string(""),
+        }
+    } else {
+        alloc_c_string("")
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_ws_close(id: i64) -> i64 {
+    if let Some(mut socket) = WS_CLIENTS.lock().remove(&id) {
+        let _ = socket.close(None);
+        0
+    } else {
+        -1
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 14. Native Task Scheduler & Concurrency
+// ---------------------------------------------------------------------------
+
+lazy_static! {
+    static ref THREAD_HANDLES: Mutex<HashMap<i64, std::thread::JoinHandle<i64>>> = Mutex::new(HashMap::new());
+    static ref NEXT_TASK_ID: AtomicI64 = AtomicI64::new(1);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_task_spawn(fn_ptr: i64, arg: i64) -> i64 {
+    if fn_ptr == 0 { return -1; }
+    let f: extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(fn_ptr as usize) };
+    let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::SeqCst);
+    let handle = std::thread::spawn(move || {
+        f(arg)
+    });
+    THREAD_HANDLES.lock().insert(task_id, handle);
+    task_id
+}
+
+#[no_mangle]
+pub extern "C" fn caria_task_join(task_id: i64) -> i64 {
+    let handle = THREAD_HANDLES.lock().remove(&task_id);
+    if let Some(h) = handle {
+        h.join().unwrap_or(-1)
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_task_sleep(ms: i64) -> i64 {
+    std::thread::sleep(std::time::Duration::from_millis(ms.max(0) as u64));
+    0
+}
+
+// ---------------------------------------------------------------------------
+// 15. Enterprise Filesystem Operations
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_file_append(path_ptr: *const c_char, content_ptr: *const c_char) -> i64 {
+    if path_ptr.is_null() || content_ptr.is_null() { return -1; }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    let content = unsafe { CStr::from_ptr(content_ptr) }.to_str().unwrap_or("");
+    match std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        Ok(mut f) => match f.write_all(content.as_bytes()) {
+            Ok(_) => 0,
+            Err(_) => -1,
+        },
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_file_remove(path_ptr: *const c_char) -> i64 {
+    if path_ptr.is_null() { return -1; }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    if std::fs::remove_file(path).is_ok() { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_dir_create(path_ptr: *const c_char) -> i64 {
+    if path_ptr.is_null() { return -1; }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    if std::fs::create_dir_all(path).is_ok() { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_dir_remove(path_ptr: *const c_char) -> i64 {
+    if path_ptr.is_null() { return -1; }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    if std::fs::remove_dir_all(path).is_ok() { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_dir_list(path_ptr: *const c_char) -> *mut c_char {
+    if path_ptr.is_null() { return alloc_c_string("[]"); }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    let mut names = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                names.push(name.to_string());
+            }
+        }
+    }
+    names.sort();
+    let json = serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string());
+    alloc_c_string(json)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_file_size(path_ptr: *const c_char) -> i64 {
+    if path_ptr.is_null() { return -1; }
+    let path = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(-1)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_file_copy(src_ptr: *const c_char, dst_ptr: *const c_char) -> i64 {
+    if src_ptr.is_null() || dst_ptr.is_null() { return -1; }
+    let src = unsafe { CStr::from_ptr(src_ptr) }.to_str().unwrap_or("");
+    let dst = unsafe { CStr::from_ptr(dst_ptr) }.to_str().unwrap_or("");
+    if std::fs::copy(src, dst).is_ok() { 0 } else { -1 }
+}
+
+// ---------------------------------------------------------------------------
+// 16. GZIP Compression & Decompression
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_gzip_compress(data_ptr: *const c_char) -> *mut c_char {
+    if data_ptr.is_null() { return alloc_c_string(""); }
+    let s = unsafe { CStr::from_ptr(data_ptr) }.to_str().unwrap_or("");
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    if encoder.write_all(s.as_bytes()).is_ok() {
+        if let Ok(compressed_bytes) = encoder.finish() {
+            let b64 = STANDARD.encode(&compressed_bytes);
+            return alloc_c_string(b64);
+        }
+    }
+    alloc_c_string("")
+}
+
+#[no_mangle]
+pub extern "C" fn caria_gzip_decompress(b64_ptr: *const c_char) -> *mut c_char {
+    if b64_ptr.is_null() { return alloc_c_string(""); }
+    let b64 = unsafe { CStr::from_ptr(b64_ptr) }.to_str().unwrap_or("");
+    if let Ok(compressed_bytes) = STANDARD.decode(b64) {
+        let mut decoder = GzDecoder::new(&compressed_bytes[..]);
+        let mut decompressed = String::new();
+        if decoder.read_to_string(&mut decompressed).is_ok() {
+            return alloc_c_string(decompressed);
+        }
+    }
+    alloc_c_string("")
+}
+
+// ---------------------------------------------------------------------------
+// 17. System & Hardware Diagnostics
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_sys_os() -> *mut c_char {
+    alloc_c_string(std::env::consts::OS)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_sys_arch() -> *mut c_char {
+    alloc_c_string(std::env::consts::ARCH)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_sys_cpu_count() -> i64 {
+    std::thread::available_parallelism().map(|n| n.get() as i64).unwrap_or(1)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_sys_cwd() -> *mut c_char {
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    alloc_c_string(cwd)
+}
+
+#[no_mangle]
+pub extern "C" fn caria_sys_exit(code: i64) -> i64 {
+    std::process::exit(code as i32);
 }

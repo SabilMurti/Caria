@@ -624,8 +624,11 @@ fn cmd_test(target_path: &str) {
         let base_dir = file.parent().unwrap_or(Path::new("."));
         let config = parse_config(file.to_str().unwrap_or(""));
         let mut visited = std::collections::HashSet::new();
-        let _ = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited);
-
+        if let Err(e) = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited) {
+            eprintln!("    ✗ Import Error in {}: {}", file_str, e);
+            total_failed += 1;
+            continue;
+        }
         // Find test runes: runes starting with test_
         let mut test_runes = Vec::new();
         for stmt in &program.statements {
@@ -741,8 +744,10 @@ fn cmd_bench(target_path: &str, requested_iters: Option<u32>) {
         let base_dir = file.parent().unwrap_or(Path::new("."));
         let config = parse_config(file.to_str().unwrap_or(""));
         let mut visited = std::collections::HashSet::new();
-        let _ = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited);
-
+        if let Err(e) = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited) {
+            eprintln!("    ✗ Import Error in {}: {}", file_str, e);
+            continue;
+        }
         let mut runes = Vec::new();
         for stmt in &program.statements {
             if let caria_parser::ast::Statement::RuneDecl(r) = stmt {

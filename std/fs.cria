@@ -1,0 +1,43 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - ENTERPRISE FILESYSTEM (std.fs)
+// ============================================================================
+
+rune read(path: txt) -> txt {
+    ret file_read(path)
+}
+
+rune write(path: txt, content: txt) -> int {
+    ret file_write(path, content)
+}
+
+rune append(path: txt, content: txt) -> int {
+    ret file_append(path, content)
+}
+
+rune remove(path: txt) -> int {
+    ret file_remove(path)
+}
+
+rune exists(path: txt) -> flag {
+    ret file_exists(path)
+}
+
+rune mkdir(path: txt) -> int {
+    ret dir_create(path)
+}
+
+rune rmdir(path: txt) -> int {
+    ret dir_remove(path)
+}
+
+rune list(path: txt) -> txt {
+    ret dir_list(path)
+}
+
+rune size(path: txt) -> int {
+    ret file_size(path)
+}
+
+rune copy(src: txt, dst: txt) -> int {
+    ret file_copy(src, dst)
+}

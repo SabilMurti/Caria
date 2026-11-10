@@ -1,0 +1,23 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - SYSTEM & HARDWARE DIAGNOSTICS (std.sys)
+// ============================================================================
+
+rune os() -> txt {
+    ret sys_os()
+}
+
+rune arch() -> txt {
+    ret sys_arch()
+}
+
+rune cpu_count() -> int {
+    ret sys_cpu_count()
+}
+
+rune cwd() -> txt {
+    ret sys_cwd()
+}
+
+rune exit_process(code: int) -> int {
+    ret sys_exit(code)
+}

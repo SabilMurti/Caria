@@ -1,0 +1,14 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - TASK SCHEDULER (std.task)
+// ============================================================================
+
+summon std.task
+
+rune test_task_sleep() -> int {
+    res := task.sleep(5)
+    if res != 0 {
+        say("✗ task.sleep failed")
+        ret 1
+    }
+    ret 0
+}

@@ -1,0 +1,22 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - GZIP COMPRESSION (std.compress)
+// ============================================================================
+
+summon std.compress
+
+rune test_gzip_compression_roundtrip() -> int {
+    original := "Caria: Scripting Feel, Native Steel! High-performance enterprise systems engineering."
+    compressed := compress.compress(original)
+    
+    if len(compressed) == 0 {
+        say("✗ GZIP compression produced empty output")
+        ret 1
+    }
+    
+    decompressed := compress.decompress(compressed)
+    if decompressed != original {
+        say("✗ Decompressed text does not match original text")
+        ret 2
+    }
+    ret 0
+}

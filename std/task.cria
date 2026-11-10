@@ -1,0 +1,15 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - CONCURRENCY & TASK SCHEDULER (std.task)
+// ============================================================================
+
+rune spawn(fn_ptr: int, arg: int) -> int {
+    ret task_spawn(fn_ptr, arg)
+}
+
+rune join(task_id: int) -> int {
+    ret task_join(task_id)
+}
+
+rune sleep(ms: int) -> int {
+    ret task_sleep(ms)
+}

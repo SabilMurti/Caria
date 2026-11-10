@@ -1168,7 +1168,7 @@ impl<'a> Parser<'a> {
                 Ok(ast::Expression::Identifier(name))
             }
 
-            _ => Err(ParseError::UnexpectedToken("Unexpected token in expression".into())),
+            other => Err(ParseError::UnexpectedToken(format!("Unexpected token in expression: {:?}", other))),
         }
     }
 
