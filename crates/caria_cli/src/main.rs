@@ -678,6 +678,131 @@ fn cmd_test(target_path: &str) {
     }
 }
 
+fn cmd_bench(target_path: &str, requested_iters: Option<u32>) {
+    let mut files = Vec::new();
+    let target = Path::new(target_path);
+    if target.is_file() {
+        files.push(target.to_path_buf());
+    } else if target.is_dir() {
+        if let Ok(entries) = fs::read_dir(target) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if name.ends_with("_test.cria") || name.ends_with("_bench.cria") || name.starts_with("test_") || name.starts_with("bench_") {
+                        files.push(p);
+                    }
+                }
+            }
+        }
+        let tests_dir = target.join("tests");
+        if tests_dir.exists() && tests_dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(tests_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() && p.extension().map_or(false, |ext| ext == "cria") {
+                        if !files.contains(&p) {
+                            files.push(p);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if files.is_empty() {
+        println!("No benchmark files found in '{}'", target_path);
+        return;
+    }
+
+    println!("⚡ Running Caria Native Microbenchmark Engine...\n");
+    let default_iters = requested_iters.unwrap_or(10_000);
+
+    for file in &files {
+        let file_str = file.to_string_lossy();
+        let source = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("  Failed to read {}: {}", file_str, e);
+                continue;
+            }
+        };
+
+        let lexer = CariaLexer::new(&source);
+        let mut parser = Parser::new(lexer);
+        let mut program = match parser.parse_program() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("  Syntax Error in {}: {:?}", file_str, e);
+                continue;
+            }
+        };
+
+        let base_dir = file.parent().unwrap_or(Path::new("."));
+        let config = parse_config(file.to_str().unwrap_or(""));
+        let mut visited = std::collections::HashSet::new();
+        let _ = resolve_imports(&mut program.statements, base_dir, &config, Path::new("."), &mut visited);
+
+        let mut runes = Vec::new();
+        for stmt in &program.statements {
+            if let caria_parser::ast::Statement::RuneDecl(r) = stmt {
+                if r.name.starts_with("bench_") || r.name.starts_with("test_") {
+                    runes.push(r.name.clone());
+                }
+            }
+        }
+
+        if runes.is_empty() {
+            continue;
+        }
+
+        println!("  Target: {}", file_str);
+        println!("  {:<32} {:>10} {:>14} {:>18} {:>14}", "Benchmark Rune", "Iterations", "Total Time", "Throughput", "Latency");
+        println!("  {}", "─".repeat(92));
+
+        for rune_name in runes {
+            match caria_codegen_native::NativeCompiler::compile_and_get_function(&program, &rune_name) {
+                Ok(fn_ptr) => {
+                    // Warmup
+                    for _ in 0..100 {
+                        let _ = fn_ptr();
+                    }
+
+                    let iters = default_iters;
+                    let start = std::time::Instant::now();
+                    for _ in 0..iters {
+                        let _ = fn_ptr();
+                    }
+                    let elapsed = start.elapsed();
+                    let elapsed_secs = elapsed.as_secs_f64();
+                    let ops_per_sec = (iters as f64) / elapsed_secs.max(0.0000001);
+                    let latency_per_op_ns = (elapsed.as_nanos() as f64) / (iters as f64);
+                    let latency_display = if latency_per_op_ns < 1000.0 {
+                        format!("{:.1} ns/op", latency_per_op_ns)
+                    } else if latency_per_op_ns < 1_000_000.0 {
+                        format!("{:.2} µs/op", latency_per_op_ns / 1000.0)
+                    } else {
+                        format!("{:.2} ms/op", latency_per_op_ns / 1_000_000.0)
+                    };
+
+                    println!("  {:<32} {:>10} {:>14.2?} {:>16.0} ops/s {:>14}",
+                        rune_name,
+                        iters,
+                        elapsed,
+                        ops_per_sec,
+                        latency_display
+                    );
+                }
+                Err(e) => {
+                    println!("  {:<32} (compile error: {})", rune_name, e);
+                }
+            }
+        }
+        println!();
+    }
+    println!("✅ Microbenchmark run complete.\n");
+}
+
 fn cmd_pkg(sub_args: &[String]) {
     use sha2::{Sha256, Digest};
     let subcmd = sub_args.first().map(|s| s.as_str()).unwrap_or("help");
@@ -809,27 +934,40 @@ fn cmd_spec() {
     let _ = fs::write(".caria/spec.md", spec);
 }
 
+fn print_help() {
+    println!("✨ Caria Programming Language Toolchain v0.6.0 (Enterprise Native AOT)");
+    println!("Usage: caria <command> [options] [arguments]\n");
+    println!("Core Commands:");
+    println!("  run <file.cria> [args]         Compile to native ELF and execute");
+    println!("  build <file.cria> [--wasm]     Compile to standalone native binary or WebAssembly");
+    println!("  test [path]                    Execute native unit test suites (*_test.cria)");
+    println!("  bench [path] [--iters N]       Execute native microbenchmark suites (bench_*)");
+    println!("  pkg <lock|verify|init>         Cryptographic dependency lockfile management");
+    println!("  fmt <file.cria>                Format Caria source code");
+    println!("  doc <file.cria>                Extract API documentation and markdown");
+    println!("  repl                           Launch interactive high-performance REPL");
+    println!("  lsp                            Launch Language Server Protocol for editors");
+    println!("  mcp                            Launch Model Context Protocol for AI agents");
+    println!("  spec                           Print formal language specification");
+    println!("  help, -h, --help               Show this help message");
+    println!("  version, -V, --version         Show compiler and runtime version info");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        println!("✨ Caria Programming Language Toolchain v0.5.0");
-        println!("Usage:");
-        println!("  caria run <file.cria> [args]         Compile and run natively (JIT)");
-        println!("  caria build <file.cria> [--wasm]     Compile to native executable or WASM");
-        println!("  caria test [path]                    Run native test suite");
-        println!("  caria pkg [init|lock|verify]         Manage packages and lockfile integrity");
-        println!("  caria dev [file.cria]                Start live file watcher and re-run on save");
-        println!("  caria repl                           Start interactive REPL shell");
-        println!("  caria fmt <file.cria>                Format Caria source file");
-        println!("  caria doc <file.cria>                Extract documentation comments");
-        println!("  caria lsp                            Start Language Server Protocol (LSP)");
-        println!("  caria mcp                            Start Model Context Protocol (MCP) server");
-        println!("  caria spec                           Print language specification");
+        print_help();
         return;
     }
 
     match args[1].as_str() {
+        "--help" | "-h" | "help" => {
+            print_help();
+        }
+        "--version" | "-V" | "version" => {
+            println!("caria 0.6.0 (enterprise native AOT cranelift aarch64/x86_64)");
+        }
         "spec" => {
             cmd_spec();
         }
@@ -934,6 +1072,24 @@ fn main() {
                 ".".to_string()
             };
             cmd_test(&target_path);
+        }
+        "bench" => {
+            let target_path = if args.len() >= 3 && !args[2].starts_with("--") {
+                args[2].clone()
+            } else {
+                ".".to_string()
+            };
+            let mut iters = None;
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--iters" && i + 1 < args.len() {
+                    iters = args[i+1].parse::<u32>().ok();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            cmd_bench(&target_path, iters);
         }
         "pkg" => {
             let sub_args: Vec<String> = if args.len() >= 3 {

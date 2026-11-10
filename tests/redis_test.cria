@@ -1,0 +1,39 @@
+// ============================================================================
+// CARIA REDIS IN-MEMORY ENGINE TEST SUITE
+// ============================================================================
+// Run with: caria test tests/redis_test.cria
+// ============================================================================
+
+summon std.redis
+
+rune test_redis_connection_error_handling() -> int {
+    // Attempting to connect to an unreachable redis port must fail cleanly with -1
+    bad_conn := connect("redis://127.0.0.1:9999/")
+    if bad_conn != -1 {
+        ret 1
+    }
+    
+    // Non-existent connection get should return empty string
+    empty_val := get(999, "my_key")
+    if empty_val != "" {
+        ret 2
+    }
+    
+    // Non-existent connection set should return -1
+    set_res := set(999, "my_key", "my_val")
+    if set_res != -1 {
+        ret 3
+    }
+    
+    // Close on non-existent connection returns 0
+    c_res := close(999)
+    if c_res != 0 {
+        ret 4
+    }
+    
+    ret 0
+}
+
+rune main() -> int {
+    ret 0
+}

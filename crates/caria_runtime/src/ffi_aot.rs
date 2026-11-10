@@ -905,45 +905,90 @@ use std::net::TcpListener;
 use std::io::{Read, Write};
 
 #[no_mangle] pub extern "C" fn caria_http_get(url: *const c_char) -> i64 {
-    if url.is_null() { return 0; }
+    if url.is_null() { return track_c_string(CString::new("").unwrap().into_raw()) as i64; }
     let u = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or("");
     match reqwest::blocking::get(u) {
         Ok(resp) => match resp.text() {
             Ok(body) => match CString::new(body) {
-                Ok(cs) => cs.into_raw() as i64,
-                Err(_) => 0,
+                Ok(cs) => track_c_string(cs.into_raw()) as i64,
+                Err(_) => track_c_string(CString::new("").unwrap().into_raw()) as i64,
             },
             Err(e) => {
                 set_error(format!("HTTP read error: {}", e));
-                0
+                track_c_string(CString::new("").unwrap().into_raw()) as i64
             }
         },
         Err(e) => {
             set_error(format!("HTTP GET request error: {}", e));
-            0
+            track_c_string(CString::new("").unwrap().into_raw()) as i64
         }
     }
 }
 
 #[no_mangle] pub extern "C" fn caria_http_post(url: *const c_char, body: *const c_char) -> i64 {
-    if url.is_null() { return 0; }
+    if url.is_null() { return track_c_string(CString::new("").unwrap().into_raw()) as i64; }
     let u = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or("");
     let b = if !body.is_null() { unsafe { CStr::from_ptr(body) }.to_str().unwrap_or("") } else { "" };
     let client = reqwest::blocking::Client::new();
     match client.post(u).body(b.to_string()).send() {
         Ok(resp) => match resp.text() {
             Ok(body_text) => match CString::new(body_text) {
-                Ok(cs) => cs.into_raw() as i64,
-                Err(_) => 0,
+                Ok(cs) => track_c_string(cs.into_raw()) as i64,
+                Err(_) => track_c_string(CString::new("").unwrap().into_raw()) as i64,
             },
             Err(e) => {
                 set_error(format!("HTTP read error: {}", e));
-                0
+                track_c_string(CString::new("").unwrap().into_raw()) as i64
             }
         },
         Err(e) => {
             set_error(format!("HTTP POST request error: {}", e));
-            0
+            track_c_string(CString::new("").unwrap().into_raw()) as i64
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_http_put(url: *const c_char, body: *const c_char) -> i64 {
+    if url.is_null() { return track_c_string(CString::new("").unwrap().into_raw()) as i64; }
+    let u = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or("");
+    let b = if !body.is_null() { unsafe { CStr::from_ptr(body) }.to_str().unwrap_or("") } else { "" };
+    let client = reqwest::blocking::Client::new();
+    match client.put(u).body(b.to_string()).send() {
+        Ok(resp) => match resp.text() {
+            Ok(body_text) => match CString::new(body_text) {
+                Ok(cs) => track_c_string(cs.into_raw()) as i64,
+                Err(_) => track_c_string(CString::new("").unwrap().into_raw()) as i64,
+            },
+            Err(e) => {
+                set_error(format!("HTTP read error: {}", e));
+                track_c_string(CString::new("").unwrap().into_raw()) as i64
+            }
+        },
+        Err(e) => {
+            set_error(format!("HTTP PUT request error: {}", e));
+            track_c_string(CString::new("").unwrap().into_raw()) as i64
+        }
+    }
+}
+
+#[no_mangle] pub extern "C" fn caria_http_delete(url: *const c_char) -> i64 {
+    if url.is_null() { return track_c_string(CString::new("").unwrap().into_raw()) as i64; }
+    let u = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or("");
+    let client = reqwest::blocking::Client::new();
+    match client.delete(u).send() {
+        Ok(resp) => match resp.text() {
+            Ok(body_text) => match CString::new(body_text) {
+                Ok(cs) => track_c_string(cs.into_raw()) as i64,
+                Err(_) => track_c_string(CString::new("").unwrap().into_raw()) as i64,
+            },
+            Err(e) => {
+                set_error(format!("HTTP read error: {}", e));
+                track_c_string(CString::new("").unwrap().into_raw()) as i64
+            }
+        },
+        Err(e) => {
+            set_error(format!("HTTP DELETE request error: {}", e));
+            track_c_string(CString::new("").unwrap().into_raw()) as i64
         }
     }
 }
@@ -983,6 +1028,117 @@ use std::io::{Read, Write};
         }
     }
     1
+}
+
+// ---------------------------------------------------------------------------
+// In-Memory Data Store Engine - Redis (std.redis)
+// ---------------------------------------------------------------------------
+lazy_static! {
+    static ref REDIS_CONNS: Mutex<HashMap<i64, redis::Connection>> = Mutex::new(HashMap::new());
+    static ref NEXT_REDIS_ID: Mutex<i64> = Mutex::new(1);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_connect(url_ptr: *const c_char) -> i64 {
+    if url_ptr.is_null() { return -1; }
+    let url = unsafe { CStr::from_ptr(url_ptr) }.to_str().unwrap_or("redis://127.0.0.1/");
+    match redis::Client::open(url) {
+        Ok(client) => match client.get_connection() {
+            Ok(con) => {
+                let mut id_lock = NEXT_REDIS_ID.lock();
+                let id = *id_lock;
+                *id_lock += 1;
+                REDIS_CONNS.lock().insert(id, con);
+                id
+            }
+            Err(e) => {
+                set_error(format!("Redis connection error: {}", e));
+                -1
+            }
+        },
+        Err(e) => {
+            set_error(format!("Redis client init error: {}", e));
+            -1
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_get(conn_id: i64, key_ptr: *const c_char) -> *mut c_char {
+    if key_ptr.is_null() { return track_c_string(CString::new("").unwrap().into_raw()); }
+    let key = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let mut conns = REDIS_CONNS.lock();
+    if let Some(con) = conns.get_mut(&conn_id) {
+        use redis::Commands;
+        let val: Option<String> = con.get(key).ok();
+        track_c_string(CString::new(val.unwrap_or_default()).unwrap_or_default().into_raw())
+    } else {
+        track_c_string(CString::new("").unwrap().into_raw())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_set(conn_id: i64, key_ptr: *const c_char, val_ptr: *const c_char) -> i64 {
+    if key_ptr.is_null() || val_ptr.is_null() { return -1; }
+    let key = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let val = unsafe { CStr::from_ptr(val_ptr) }.to_str().unwrap_or("");
+    let mut conns = REDIS_CONNS.lock();
+    if let Some(con) = conns.get_mut(&conn_id) {
+        use redis::Commands;
+        let res: Result<(), redis::RedisError> = con.set(key, val);
+        if res.is_ok() { 0 } else { -1 }
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_set_ex(conn_id: i64, key_ptr: *const c_char, val_ptr: *const c_char, ttl_sec: i64) -> i64 {
+    if key_ptr.is_null() || val_ptr.is_null() { return -1; }
+    let key = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let val = unsafe { CStr::from_ptr(val_ptr) }.to_str().unwrap_or("");
+    let mut conns = REDIS_CONNS.lock();
+    if let Some(con) = conns.get_mut(&conn_id) {
+        use redis::Commands;
+        let res: Result<(), redis::RedisError> = con.set_ex(key, val, ttl_sec.max(1) as u64);
+        if res.is_ok() { 0 } else { -1 }
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_del(conn_id: i64, key_ptr: *const c_char) -> i64 {
+    if key_ptr.is_null() { return -1; }
+    let key = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let mut conns = REDIS_CONNS.lock();
+    if let Some(con) = conns.get_mut(&conn_id) {
+        use redis::Commands;
+        let res: Result<i64, redis::RedisError> = con.del(key);
+        res.unwrap_or(0)
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_incr(conn_id: i64, key_ptr: *const c_char, delta: i64) -> i64 {
+    if key_ptr.is_null() { return -1; }
+    let key = unsafe { CStr::from_ptr(key_ptr) }.to_str().unwrap_or("");
+    let mut conns = REDIS_CONNS.lock();
+    if let Some(con) = conns.get_mut(&conn_id) {
+        use redis::Commands;
+        let res: Result<i64, redis::RedisError> = con.incr(key, delta);
+        res.unwrap_or(0)
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_redis_close(conn_id: i64) -> i64 {
+    REDIS_CONNS.lock().remove(&conn_id);
+    0
 }
 
 // ---------------------------------------------------------------------------

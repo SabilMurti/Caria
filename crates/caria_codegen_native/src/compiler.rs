@@ -242,8 +242,19 @@ impl CariaCompiler {
         // HTTP Client & Enterprise Microserver Engine
         add_symbol!("caria_http_get", caria_runtime::ffi_aot::caria_http_get);
         add_symbol!("caria_http_post", caria_runtime::ffi_aot::caria_http_post);
+        add_symbol!("caria_http_put", caria_runtime::ffi_aot::caria_http_put);
+        add_symbol!("caria_http_delete", caria_runtime::ffi_aot::caria_http_delete);
         add_symbol!("caria_http_listen_and_serve", caria_runtime::ffi_aot::caria_http_listen_and_serve);
         add_symbol!("caria_http_serve_router", caria_runtime::ffi_aot::caria_http_serve_router);
+
+        // Redis In-Memory Data Store (std.redis)
+        add_symbol!("caria_redis_connect", caria_runtime::ffi_aot::caria_redis_connect);
+        add_symbol!("caria_redis_get", caria_runtime::ffi_aot::caria_redis_get);
+        add_symbol!("caria_redis_set", caria_runtime::ffi_aot::caria_redis_set);
+        add_symbol!("caria_redis_set_ex", caria_runtime::ffi_aot::caria_redis_set_ex);
+        add_symbol!("caria_redis_del", caria_runtime::ffi_aot::caria_redis_del);
+        add_symbol!("caria_redis_incr", caria_runtime::ffi_aot::caria_redis_incr);
+        add_symbol!("caria_redis_close", caria_runtime::ffi_aot::caria_redis_close);
 
         // Memory Arena & Scopes
         add_symbol!("caria_scope_enter", caria_runtime::ffi_aot::caria_scope_enter);
@@ -608,8 +619,18 @@ impl CariaCompiler {
             // HTTP
             "http_get" => "caria_http_get",
             "http_post" => "caria_http_post",
+            "http_put" => "caria_http_put",
+            "http_delete" => "caria_http_delete",
             "http_serve" => "caria_http_listen_and_serve",
             "http_serve_router" => "caria_http_serve_router",
+            // Redis
+            "redis_connect" => "caria_redis_connect",
+            "redis_get" => "caria_redis_get",
+            "redis_set" => "caria_redis_set",
+            "redis_set_ex" => "caria_redis_set_ex",
+            "redis_del" => "caria_redis_del",
+            "redis_incr" => "caria_redis_incr",
+            "redis_close" => "caria_redis_close",
             // Scopes & Arena
             "scope_enter" => "caria_scope_enter",
             "scope_exit" => "caria_scope_exit",

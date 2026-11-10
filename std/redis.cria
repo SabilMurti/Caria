@@ -1,0 +1,31 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - REDIS IN-MEMORY DATA ENGINE (std.redis)
+// ============================================================================
+
+rune connect(url: txt) -> int {
+    ret redis_connect(url)
+}
+
+rune get(conn: int, key: txt) -> txt {
+    ret redis_get(conn, key)
+}
+
+rune set(conn: int, key: txt, value: txt) -> int {
+    ret redis_set(conn, key, value)
+}
+
+rune set_ex(conn: int, key: txt, value: txt, ttl_sec: int) -> int {
+    ret redis_set_ex(conn, key, value, ttl_sec)
+}
+
+rune del(conn: int, key: txt) -> int {
+    ret redis_del(conn, key)
+}
+
+rune incr(conn: int, key: txt, delta: int) -> int {
+    ret redis_incr(conn, key, delta)
+}
+
+rune close(conn: int) -> int {
+    ret redis_close(conn)
+}

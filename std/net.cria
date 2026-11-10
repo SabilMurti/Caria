@@ -10,6 +10,14 @@ rune post(url: txt, body: txt) -> txt {
     ret http_post(url, body)
 }
 
+rune put(url: txt, body: txt) -> txt {
+    ret http_put(url, body)
+}
+
+rune delete(url: txt) -> txt {
+    ret http_delete(url)
+}
+
 rune serve(port: int, response_json: txt) -> int {
     ret http_serve(port, response_json)
 }

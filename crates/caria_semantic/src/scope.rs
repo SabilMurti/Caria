@@ -213,6 +213,8 @@ impl Scope {
             "map_alloc", "map_set", "map_get", "map_has", "map_len", "map_free",
             "channel_create", "channel_send", "channel_recv", "channel_try_recv", "channel_close",
             "hmac_sha256", "safe_equals", "jwt_sign", "jwt_verify",
+            "http_put", "http_delete",
+            "redis_connect", "redis_get", "redis_set", "redis_set_ex", "redis_del", "redis_incr", "redis_close",
             "caria_smart_eq", "caria_smart_neq",
         ];
         for b in builtins {

@@ -21,7 +21,8 @@
     "./std/io.cria": "sha256:1c40f39da4afee793531eed069b1ab006810d7f644a76f8ee5249eb1d85b0d2d",
     "./std/json.cria": "sha256:e551412888628f6865ea55f1ba5b1b1338303fa9cddb78b60ed20cf2ae8de0cf",
     "./std/math.cria": "sha256:c5baa11b00c2f9b55f1d5b15e840832b8ea69a57e83e7c00cb42290157724143",
-    "./std/net.cria": "sha256:5c835fe085e8ee5ca5cb90835a34806f1ba2b98d459f7ae3d79ac2ecd0f37c68",
+    "./std/net.cria": "sha256:f49bad1d755b5d853824fa300619ef92c55318af653a1880a6271bb0bf053e0a",
+    "./std/redis.cria": "sha256:595f7876a69b2d1c7248bc24de7749675e64da52ae5b39ad8302f40c23d88297",
     "./std/regex.cria": "sha256:2cacb07e1c40f48787bed294394afce7ba69e6e2f23bcfb91e12281cc2636ed6",
     "./std/schema.cria": "sha256:a7c2c15d7dcf7e86f043084974350e9e77ecd0c3c0a393ae8e8826945344b4df",
     "./std/string.cria": "sha256:a224cd383c5f198180f418966efba55553ab33b827378afb2682a8ad22e55d65",
@@ -31,9 +32,10 @@
     "./tests/control_flow_test.cria": "sha256:26b5fa879036660f4c3f17a9540b0980849f6479c84ff084277331d097f52b36",
     "./tests/core_suite_test.cria": "sha256:b3cfd1c598702a7e29ea06de47d233321f84716907c13227dc1394396dfcea59",
     "./tests/enterprise_suite_test.cria": "sha256:ad8eecd40b67fd3cc52fa934daa04d17c6781c3ef7dadd5d3342d2ef7405a88b",
+    "./tests/redis_test.cria": "sha256:e82c8b57f7c4a8084d6a173ac921d4bb56ddb9e2bee3161ddc794bbc40f062cf",
     "./tests/stdlib_suite_test.cria": "sha256:f22af44b3251371eafcc382b362ca282c4b5f8cdc9c8a8d33d0cb35a3e467cdd",
     "./tests/sync_channel_test.cria": "sha256:4cf8c0cbf48403fe56809ba3d49522511f0e615019cb1ffc93a362d54f48dfa3"
   },
-  "generated_at": 1794289036,
+  "generated_at": 1794305848,
   "lockfile_version": "1.0"
 }
