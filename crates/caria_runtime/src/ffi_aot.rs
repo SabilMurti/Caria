@@ -23,7 +23,10 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{WebSocket, Message};
-use std::net::TcpStream;
+use std::net::{TcpStream, TcpListener};
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 thread_local! { 
@@ -531,14 +534,11 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
 }
 
 #[no_mangle] pub extern "C" fn caria_env_get(key: *const c_char) -> i64 {
-    if key.is_null() { return 0; }
+    if key.is_null() { return alloc_c_string("") as i64; }
     let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
     match std::env::var(k) {
-        Ok(val) => match CString::new(val) {
-            Ok(cs) => cs.into_raw() as i64,
-            Err(_) => 0,
-        },
-        Err(_) => 0,
+        Ok(val) => alloc_c_string(val) as i64,
+        Err(_) => alloc_c_string("") as i64,
     }
 }
 
@@ -583,7 +583,6 @@ pub fn ffi_fail<T: std::fmt::Display>(ctx: &str, e: T) -> i64 {
 // ---------------------------------------------------------------------------
 // AI Sandboxing & Gas Metering Engine
 // ---------------------------------------------------------------------------
-use std::sync::atomic::{AtomicI64, Ordering};
 
 static CARIA_GAS_REMAINING: AtomicI64 = AtomicI64::new(-1);
 
@@ -911,8 +910,6 @@ lazy_static! {
 // ---------------------------------------------------------------------------
 // 7. HTTP Client & Native Microserver Engine
 // ---------------------------------------------------------------------------
-use std::net::TcpListener;
-use std::io::{Read, Write};
 
 #[no_mangle] pub extern "C" fn caria_http_get(url: *const c_char) -> i64 {
     if url.is_null() { return track_c_string(CString::new("").unwrap().into_raw()) as i64; }
@@ -1444,45 +1441,6 @@ pub extern "C" fn caria_crypto_jwt_verify(token_ptr: *const c_char, secret_ptr: 
 }
 
 // ---------------------------------------------------------------------------
-// HTTP Router Engine
-// ---------------------------------------------------------------------------
-#[no_mangle]
-pub extern "C" fn caria_http_serve_router(port: i64, _routes_json_ptr: *const c_char) -> i64 {
-    use std::net::TcpListener;
-    use std::io::{Read, Write};
-
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = match TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("Failed to bind to {}: {}", addr, e);
-            return -1;
-        }
-    };
-    println!("🚀 Caria Native Router listening on http://0.0.0.0:{}", port);
-
-    let default_body = "{\"status\":\"ok\",\"engine\":\"caria_router\"}";
-    let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        default_body.len(),
-        default_body
-    );
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut socket) => {
-                let mut buf = [0u8; 1024];
-                let _ = socket.read(&mut buf);
-                let _ = socket.write_all(response.as_bytes());
-                let _ = socket.flush();
-            }
-            Err(_) => break,
-        }
-    }
-    0
-}
-
-// ---------------------------------------------------------------------------
 // Smart Content-Aware Equality (Strings & Primitives)
 // ---------------------------------------------------------------------------
 
@@ -1654,6 +1612,72 @@ pub extern "C" fn caria_hex_decode(hex_ptr: *const c_char) -> *mut c_char {
 lazy_static! {
     static ref WS_CLIENTS: Mutex<HashMap<i64, WebSocket<MaybeTlsStream<TcpStream>>>> = Mutex::new(HashMap::new());
     static ref NEXT_WS_ID: AtomicI64 = AtomicI64::new(1);
+    static ref WS_SERVERS: Mutex<HashMap<i64, Arc<AtomicBool>>> = Mutex::new(HashMap::new());
+    static ref NEXT_WS_SERVER_ID: AtomicI64 = AtomicI64::new(1);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_ws_server_start(port: i64) -> i64 {
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            set_error(format!("Failed to bind WS server to {}: {}", addr, e));
+            return -1;
+        }
+    };
+    let _ = listener.set_nonblocking(true);
+
+    let server_id = NEXT_WS_SERVER_ID.fetch_add(1, Ordering::SeqCst);
+    let running = Arc::new(AtomicBool::new(true));
+    WS_SERVERS.lock().insert(server_id, running.clone());
+
+    let running_clone = running.clone();
+    std::thread::spawn(move || {
+        while running_clone.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    let _ = stream.set_nonblocking(false);
+                    std::thread::spawn(move || {
+                        if let Ok(mut ws) = tungstenite::accept(stream) {
+                            loop {
+                                match ws.read() {
+                                    Ok(msg) => {
+                                        if msg.is_text() || msg.is_binary() {
+                                            if ws.send(msg).is_err() {
+                                                break;
+                                            }
+                                        } else if msg.is_close() {
+                                            break;
+                                        }
+                                    }
+                                    Err(_) => break,
+                                }
+                            }
+                        }
+                    });
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+    });
+
+    server_id
+}
+
+#[no_mangle]
+pub extern "C" fn caria_ws_server_stop(server_id: i64) -> i64 {
+    if let Some(running) = WS_SERVERS.lock().remove(&server_id) {
+        running.store(false, Ordering::SeqCst);
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
@@ -2091,4 +2115,142 @@ pub extern "C" fn caria_http_route_dispatch(method_ptr: *const c_char, path_ptr:
     }
 
     alloc_c_string("{\"status\":404,\"error\":\"route not found\"}")
+}
+
+fn handle_http_stream(mut socket: TcpStream) {
+    let mut buf = [0u8; 8192];
+    let bytes_read = match socket.read(&mut buf) {
+        Ok(n) if n > 0 => n,
+        _ => return,
+    };
+    let request_str = String::from_utf8_lossy(&buf[..bytes_read]);
+
+    let mut lines = request_str.split("\r\n");
+    let request_line = match lines.next() {
+        Some(l) => l,
+        None => return,
+    };
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
+    if parts.len() < 2 {
+        let err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let _ = socket.write_all(err_resp.as_bytes());
+        return;
+    }
+    let method = parts[0].to_uppercase();
+    let raw_path = parts[1];
+    let path = raw_path.split('?').next().unwrap_or("/");
+
+    let body = if let Some(idx) = request_str.find("\r\n\r\n") {
+        &request_str[idx + 4..]
+    } else {
+        ""
+    };
+
+    let c_method = CString::new(method.as_str()).unwrap_or_default();
+    let c_path = CString::new(path).unwrap_or_default();
+    let c_body = CString::new(body).unwrap_or_default();
+
+    let res_ptr = caria_http_route_dispatch(c_method.as_ptr(), c_path.as_ptr(), c_body.as_ptr());
+    let response_body = if !res_ptr.is_null() {
+        unsafe { CStr::from_ptr(res_ptr) }.to_str().unwrap_or("{\"status\":404}")
+    } else {
+        "{\"status\":404}"
+    };
+
+    let status_code = if response_body.contains("\"error\":\"route not found\"") {
+        "404 Not Found"
+    } else if response_body.contains("\"status\":400") {
+        "400 Bad Request"
+    } else {
+        "200 OK"
+    };
+
+    let response = format!(
+        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status_code,
+        response_body.len(),
+        response_body
+    );
+
+    let _ = socket.write_all(response.as_bytes());
+    let _ = socket.flush();
+}
+
+lazy_static! {
+    static ref HTTP_SERVERS: Mutex<HashMap<i64, Arc<AtomicBool>>> = Mutex::new(HashMap::new());
+    static ref NEXT_SERVER_ID: AtomicI64 = AtomicI64::new(1);
+}
+
+#[no_mangle]
+pub extern "C" fn caria_http_server_start(port: i64) -> i64 {
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            set_error(format!("Failed to bind HTTP server to {}: {}", addr, e));
+            return -1;
+        }
+    };
+    let _ = listener.set_nonblocking(true);
+
+    let server_id = NEXT_SERVER_ID.fetch_add(1, Ordering::SeqCst);
+    let running = Arc::new(AtomicBool::new(true));
+    HTTP_SERVERS.lock().insert(server_id, running.clone());
+
+    let running_clone = running.clone();
+    std::thread::spawn(move || {
+        while running_clone.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    let _ = stream.set_nonblocking(false);
+                    std::thread::spawn(move || {
+                        handle_http_stream(stream);
+                    });
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+    });
+
+    server_id
+}
+
+#[no_mangle]
+pub extern "C" fn caria_http_server_stop(server_id: i64) -> i64 {
+    if let Some(running) = HTTP_SERVERS.lock().remove(&server_id) {
+        running.store(false, Ordering::SeqCst);
+        0
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_http_serve_router(port: i64, _routes_json_ptr: *const c_char) -> i64 {
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match TcpListener::bind(&addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Failed to bind to {}: {}", addr, e);
+            return -1;
+        }
+    };
+    println!("🚀 Caria Native Multi-Threaded Router listening on http://0.0.0.0:{}", port);
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(socket) => {
+                std::thread::spawn(move || {
+                    handle_http_stream(socket);
+                });
+            }
+            Err(_) => break,
+        }
+    }
+    0
 }

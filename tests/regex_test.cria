@@ -1,0 +1,69 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - REGULAR EXPRESSIONS (std.regex)
+// ============================================================================
+
+summon std.regex
+
+rune test_regex_validation_and_matching() -> int {
+    valid_pattern := "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$"
+    if regex.validate(valid_pattern) == false {
+        say("✗ Expected valid email pattern to validate")
+        ret 1
+    }
+
+    invalid_pattern := "[a-z"
+    if regex.validate(invalid_pattern) == true {
+        say("✗ Expected malformed regex pattern to fail validation")
+        ret 2
+    }
+
+    email := "sabil@caria.dev"
+    if regex.is_match(valid_pattern, email) == false {
+        say("✗ Expected valid email to match regex pattern")
+        ret 3
+    }
+
+    non_email := "invalid-not-an-email"
+    if regex.is_match(valid_pattern, non_email) == true {
+        say("✗ Expected invalid email to fail regex match")
+        ret 4
+    }
+
+    ret 0
+}
+
+rune test_regex_find_and_replace() -> int {
+    text := "The year 2026 is here in 2026!"
+    digits_pattern := "\\d{4}"
+
+    pos := regex.find(digits_pattern, text)
+    if pos < 0 {
+        say("✗ Expected to find digits in text")
+        ret 10
+    }
+
+    replaced := regex.replace_all(digits_pattern, text, "YEAR")
+    if len(replaced) == 0 {
+        say("✗ regex.replace_all produced empty string")
+        ret 11
+    }
+
+    ret 0
+}
+
+rune test_regex_split_and_escape() -> int {
+    raw := "item1,item2,item3"
+    parts := regex.split(",", raw)
+    if len(parts) == 0 {
+        say("✗ Expected regex.split to return parts")
+        ret 20
+    }
+
+    escaped := regex.escape("foo.bar(baz)*")
+    if len(escaped) == 0 {
+        say("✗ regex.escape produced empty string")
+        ret 21
+    }
+
+    ret 0
+}

@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - JSON
+// CARIA STANDARD LIBRARY - JSON (std.json)
 // ============================================================================
 
 rune is_valid_json(payload: txt) -> flag {
@@ -17,6 +17,10 @@ rune stringify(obj: [txt: txt]) -> txt {
     ret json_stringify(obj)
 }
 
-rune get(json_str: txt, key: txt) -> txt {
+rune get_field(json_str: txt, key: txt) -> txt {
+    ret json_get(json_str, key)
+}
+
+rune json_get(json_str: txt, key: txt) -> txt {
     ret json_get(json_str, key)
 }

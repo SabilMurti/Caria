@@ -1,0 +1,49 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - DATABASE ENGINE & MIGRATION (std.db)
+// ============================================================================
+
+summon std.db
+
+rune test_database_migration_and_queries() -> int {
+    db_file := "/tmp/caria_test_db.sqlite"
+    conn := db.open(db_file)
+    if conn < 0 {
+        say("✗ db.open failed")
+        ret 1
+    }
+
+    // Run Migration
+    mig_res := db.run_migration(conn, "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, username TEXT, balance INTEGER);")
+    if mig_res < 0 {
+        say("✗ db.run_migration failed")
+        ret 2
+    }
+
+    exists := db.table_exists(conn, "accounts")
+    if exists == false {
+        say("✗ db.table_exists failed")
+        ret 3
+    }
+
+    // Insert records
+    ins_res := db.exec_params(conn, "INSERT INTO accounts (username, balance) VALUES (?, ?);", "[\"alice\", 500]")
+    if ins_res < 0 {
+        say("✗ db.exec_params failed")
+        ret 4
+    }
+
+    // Query records
+    q_res := db.select_where(conn, "accounts", "username = 'alice'")
+    if len(q_res) == 0 {
+        say("✗ db.select_where failed")
+        ret 5
+    }
+
+    close_res := db.close(conn)
+    if close_res < 0 {
+        say("✗ db.close failed")
+        ret 6
+    }
+
+    ret 0
+}

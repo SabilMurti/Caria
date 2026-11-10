@@ -1,0 +1,23 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - ENTERPRISE STRUCTURED LOGGING (std.log)
+// ============================================================================
+
+rune info(msg: txt) -> int {
+    say_level("INFO", msg)
+    ret 0
+}
+
+rune warn(msg: txt) -> int {
+    say_level("WARN", msg)
+    ret 0
+}
+
+rune error(msg: txt) -> int {
+    say_level("ERROR", msg)
+    ret 1
+}
+
+rune debug(msg: txt) -> int {
+    say_level("DEBUG", msg)
+    ret 0
+}

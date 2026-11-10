@@ -1,0 +1,52 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - HTTP SERVER DAEMON & ROUTER (std.net)
+// ============================================================================
+
+summon std.net
+
+rune health_handler(req: txt) -> txt {
+    ret "{\"status\":\"healthy\",\"uptime\":100}"
+}
+
+rune test_http_server_daemon_and_route_dispatch() -> int {
+    port := 18890
+
+    // Register native route
+    reg_res := net.route("GET", "/health", health_handler)
+    if reg_res != 0 {
+        say("✗ net.route registration failed")
+        ret 1
+    }
+
+    // Start background HTTP server
+    srv_id := net.server_start(port)
+    if srv_id <= 0 {
+        say("✗ net.server_start failed")
+        ret 2
+    }
+
+    // Dispatch HTTP client request
+    url := "http://127.0.0.1:18890/health"
+    response := net.get(url)
+    if len(response) == 0 {
+        say("✗ net.get received empty response")
+        net.server_stop(srv_id)
+        ret 3
+    }
+
+    // Verify response content
+    if str_contains(response, "healthy") != 1 {
+        say("✗ Expected 'healthy' in response")
+        net.server_stop(srv_id)
+        ret 4
+    }
+
+    // Stop background server
+    stop_res := net.server_stop(srv_id)
+    if stop_res != 0 {
+        say("✗ net.server_stop failed")
+        ret 5
+    }
+
+    ret 0
+}

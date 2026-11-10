@@ -362,6 +362,12 @@ impl CariaCompiler {
         // Dynamic HTTP Router
         add_symbol!("caria_http_route_register", caria_runtime::ffi_aot::caria_http_route_register);
         add_symbol!("caria_http_route_dispatch", caria_runtime::ffi_aot::caria_http_route_dispatch);
+        add_symbol!("caria_http_server_start", caria_runtime::ffi_aot::caria_http_server_start);
+        add_symbol!("caria_http_server_stop", caria_runtime::ffi_aot::caria_http_server_stop);
+
+        // WebSockets Server
+        add_symbol!("caria_ws_server_start", caria_runtime::ffi_aot::caria_ws_server_start);
+        add_symbol!("caria_ws_server_stop", caria_runtime::ffi_aot::caria_ws_server_stop);
 
         Ok(())
     }
@@ -655,9 +661,13 @@ impl CariaCompiler {
             "str_len" | "len" => "caria_string_len",
             "str_split" | "split" => "caria_string_split",
             "str_trim" | "trim" => "caria_string_trim",
+            "str_trim_left" | "trim_left" => "caria_string_trim_left",
+            "str_trim_right" | "trim_right" => "caria_string_trim_right",
             "str_lower" | "lower" => "caria_string_lower",
             "str_upper" | "upper" => "caria_string_upper",
             "str_contains" | "contains" => "caria_string_contains",
+            "str_indexof" | "indexof" => "caria_string_indexof",
+            "str_lastindexof" | "lastindexof" => "caria_string_lastindexof",
             "str_substring" | "substring" => "caria_string_substring",
             "str_replace" | "replace" => "caria_string_replace_all",
             // JSON
@@ -726,6 +736,7 @@ impl CariaCompiler {
             "base64_encode" => "caria_base64_encode",
             "base64_decode" => "caria_base64_decode",
             // Regex
+            "regex_validate" => "caria_regex_validate",
             "regex_test" => "caria_regex_test",
             "regex_replace" => "caria_regex_replace",
             "regex_match" => "caria_regex_match",
@@ -748,6 +759,8 @@ impl CariaCompiler {
             "ws_send" => "caria_ws_send",
             "ws_recv" => "caria_ws_recv",
             "ws_close" => "caria_ws_close",
+            "ws_server_start" => "caria_ws_server_start",
+            "ws_server_stop" => "caria_ws_server_stop",
             // Task Scheduler
             "task_spawn" => "caria_task_spawn",
             "task_join" => "caria_task_join",
@@ -778,9 +791,11 @@ impl CariaCompiler {
             // CSV
             "csv_parse" => "caria_csv_parse",
             "csv_stringify" => "caria_csv_stringify",
-            // HTTP Router Dispatch
-            "http_route" => "caria_http_route_register",
-            "http_dispatch" => "caria_http_route_dispatch",
+            // HTTP Router Dispatch & Server
+            "http_route" | "route_register" => "caria_http_route_register",
+            "http_dispatch" | "route_dispatch" => "caria_http_route_dispatch",
+            "http_server_start" => "caria_http_server_start",
+            "http_server_stop" => "caria_http_server_stop",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",

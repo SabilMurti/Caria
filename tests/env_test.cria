@@ -1,0 +1,35 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - ENVIRONMENT VARIABLES (std.environ)
+// ============================================================================
+
+summon std.environ
+
+rune test_env_lifecycle() -> int {
+    key := "CARIA_ENTERPRISE_ENV_TEST"
+    val := "active_v3"
+
+    set_res := environ.set(key, val)
+    if set_res <= 0 {
+        say("✗ environ.set failed")
+        ret 1
+    }
+
+    if environ.has(key) == false {
+        say("✗ environ.has failed")
+        ret 2
+    }
+
+    read_val := environ.get(key)
+    if read_val != val {
+        say("✗ environ.get returned unexpected value")
+        ret 3
+    }
+
+    fallback := environ.get_or("NON_EXISTENT_VAR_12345", "default_val")
+    if fallback != "default_val" {
+        say("✗ environ.get_or fallback failed")
+        ret 4
+    }
+
+    ret 0
+}

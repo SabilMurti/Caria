@@ -1,11 +1,47 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - REGULAR EXPRESSIONS
+// CARIA STANDARD LIBRARY - REGULAR EXPRESSIONS (std.regex)
 // ============================================================================
 
+rune validate(pattern: txt) -> flag {
+    valid := regex_validate(pattern)
+    if valid == 1 {
+        ret true
+    }
+    ret false
+}
+
 rune is_match(pattern: txt, text: txt) -> flag {
-    ret regex_test(pattern, text)
+    matched := regex_test(pattern, text)
+    if matched == 1 {
+        ret true
+    }
+    ret false
+}
+
+rune find(pattern: txt, text: txt) -> int {
+    ret regex_find(pattern, text)
+}
+
+rune match_first(pattern: txt, text: txt) -> txt {
+    ret regex_match(pattern, text)
+}
+
+rune match_all(pattern: txt, text: txt) -> txt {
+    ret regex_match_all(pattern, text)
+}
+
+rune replace_pattern(pattern: txt, text: txt, replacement: txt) -> txt {
+    ret regex_replace(pattern, text, replacement)
 }
 
 rune replace_all(pattern: txt, text: txt, replacement: txt) -> txt {
     ret regex_replace(pattern, text, replacement)
+}
+
+rune split(pattern: txt, text: txt) -> txt {
+    ret regex_split(pattern, text)
+}
+
+rune escape(text: txt) -> txt {
+    ret regex_escape(text)
 }

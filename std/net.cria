@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA ENTERPRISE NETWORK & HTTP ENGINE
+// CARIA ENTERPRISE NETWORK & HTTP ENGINE (std.net)
 // ============================================================================
 
 rune get(url: txt) -> txt {
@@ -16,6 +16,22 @@ rune put(url: txt, body: txt) -> txt {
 
 rune delete(url: txt) -> txt {
     ret http_delete(url)
+}
+
+rune route(method: txt, path: txt, handler_fn: int) -> int {
+    ret http_route(method, path, handler_fn)
+}
+
+rune dispatch(method: txt, path: txt, body: txt) -> txt {
+    ret http_dispatch(method, path, body)
+}
+
+rune server_start(port: int) -> int {
+    ret http_server_start(port)
+}
+
+rune server_stop(server_id: int) -> int {
+    ret http_server_stop(server_id)
 }
 
 rune serve(port: int, response_json: txt) -> int {

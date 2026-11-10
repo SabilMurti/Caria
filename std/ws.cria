@@ -2,6 +2,14 @@
 // CARIA STANDARD LIBRARY - REAL-TIME WEBSOCKETS (std.ws)
 // ============================================================================
 
+rune server_start(port: int) -> int {
+    ret ws_server_start(port)
+}
+
+rune server_stop(server_id: int) -> int {
+    ret ws_server_stop(server_id)
+}
+
 rune connect(url: txt) -> int {
     ret ws_connect(url)
 }

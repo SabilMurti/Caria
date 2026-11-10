@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - MATH
+// CARIA STANDARD LIBRARY - MATH (std.math)
 // ============================================================================
 
 rune abs(n: int) -> int {
@@ -52,4 +52,63 @@ rune sqrt(n: int) -> int {
 
 rune random(low: int, high: int) -> int {
     ret math_random(low, high)
+}
+
+rune is_even(n: int) -> flag {
+    if n % 2 == 0 {
+        ret true
+    }
+    ret false
+}
+
+rune is_odd(n: int) -> flag {
+    if n % 2 != 0 {
+        ret true
+    }
+    ret false
+}
+
+rune sign(n: int) -> int {
+    if n > 0 {
+        ret 1
+    }
+    if n < 0 {
+        ret -1
+    }
+    ret 0
+}
+
+rune gcd(a: int, b: int) -> int {
+    x := abs(a)
+    y := abs(b)
+    while y != 0 {
+        temp := y
+        y := x % y
+        x := temp
+    }
+    ret x
+}
+
+rune lcm(a: int, b: int) -> int {
+    if a == 0 {
+        ret 0
+    }
+    if b == 0 {
+        ret 0
+    }
+    g := gcd(a, b)
+    ret abs(a * b) / g
+}
+
+rune factorial(n: int) -> int {
+    if n <= 1 {
+        ret 1
+    }
+    res := 1
+    i := 2
+    while i <= n {
+        res := res * i
+        i := i + 1
+    }
+    ret res
 }

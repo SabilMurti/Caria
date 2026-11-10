@@ -1,0 +1,59 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - WEBSOCKETS CLIENT & ECHO SERVER (std.ws)
+// ============================================================================
+
+summon std.ws
+summon std.time
+
+rune test_websocket_echo_lifecycle() -> int {
+    port := 19890
+    server_id := ws.server_start(port)
+    if server_id <= 0 {
+        say("✗ ws.server_start failed")
+        ret 1
+    }
+
+    // Connect WebSocket Client
+    url := "ws://127.0.0.1:19890"
+    client_id := ws.connect(url)
+    if client_id <= 0 {
+        say("✗ ws.connect failed")
+        ws.server_stop(server_id)
+        ret 2
+    }
+
+    // Send payload
+    send_res := ws.send(client_id, "hello from caria websocket client")
+    if send_res != 0 {
+        say("✗ ws.send failed")
+        ws.close(client_id)
+        ws.server_stop(server_id)
+        ret 3
+    }
+
+    // Receive echo
+    received := ws.recv(client_id)
+    if len(received) == 0 {
+        say("✗ ws.recv returned empty message")
+        ws.close(client_id)
+        ws.server_stop(server_id)
+        ret 4
+    }
+
+    // Close client
+    close_res := ws.close(client_id)
+    if close_res != 0 {
+        say("✗ ws.close failed")
+        ws.server_stop(server_id)
+        ret 5
+    }
+
+    // Stop server
+    stop_res := ws.server_stop(server_id)
+    if stop_res != 0 {
+        say("✗ ws.server_stop failed")
+        ret 6
+    }
+
+    ret 0
+}

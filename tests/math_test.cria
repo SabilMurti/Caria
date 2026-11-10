@@ -1,0 +1,77 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - MATH & NUMBER THEORY (std.math)
+// ============================================================================
+
+summon std.math
+
+rune test_math_arithmetic_and_parity() -> int {
+    if math.abs(-42) != 42 {
+        say("✗ math.abs failed")
+        ret 1
+    }
+
+    if math.min(10, 20) != 10 {
+        say("✗ math.min failed")
+        ret 2
+    }
+
+    if math.max(10, 20) != 20 {
+        say("✗ math.max failed")
+        ret 3
+    }
+
+    if math.clamp(5, 10, 20) != 10 {
+        say("✗ math.clamp lower bound failed")
+        ret 4
+    }
+
+    if math.clamp(25, 10, 20) != 20 {
+        say("✗ math.clamp upper bound failed")
+        ret 5
+    }
+
+    if math.is_even(4) == false {
+        say("✗ math.is_even failed for 4")
+        ret 6
+    }
+
+    if math.is_odd(7) == false {
+        say("✗ math.is_odd failed for 7")
+        ret 7
+    }
+
+    if math.sign(-99) != -1 {
+        say("✗ math.sign failed for negative")
+        ret 8
+    }
+
+    ret 0
+}
+
+rune test_math_gcd_lcm_factorial() -> int {
+    g := math.gcd(48, 18)
+    if g != 6 {
+        say("✗ math.gcd(48, 18) failed")
+        ret 10
+    }
+
+    l := math.lcm(12, 18)
+    if l != 36 {
+        say("✗ math.lcm(12, 18) failed")
+        ret 11
+    }
+
+    f := math.factorial(5)
+    if f != 120 {
+        say("✗ math.factorial(5) failed")
+        ret 12
+    }
+
+    p := math.pow(2, 8)
+    if p != 256 {
+        say("✗ math.pow(2, 8) failed")
+        ret 13
+    }
+
+    ret 0
+}

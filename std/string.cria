@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA STANDARD LIBRARY - STRING & TEXT
+// CARIA STANDARD LIBRARY - STRING & TEXT (std.string)
 // ============================================================================
 
 rune is_empty(s: txt) -> flag {
@@ -21,6 +21,14 @@ rune trim(s: txt) -> txt {
     ret str_trim(s)
 }
 
+rune trim_left(s: txt) -> txt {
+    ret str_trim_left(s)
+}
+
+rune trim_right(s: txt) -> txt {
+    ret str_trim_right(s)
+}
+
 rune lower(s: txt) -> txt {
     ret str_lower(s)
 }
@@ -37,10 +45,83 @@ rune contains(haystack: txt, needle: txt) -> flag {
     ret false
 }
 
+rune index_of(haystack: txt, needle: txt) -> int {
+    ret str_indexof(haystack, needle)
+}
+
+rune last_index_of(haystack: txt, needle: txt) -> int {
+    ret str_lastindexof(haystack, needle)
+}
+
 rune substring(s: txt, start: int, length: int) -> txt {
     ret str_substring(s, start, length)
 }
 
 rune replace(s: txt, old_str: txt, new_str: txt) -> txt {
     ret str_replace(s, old_str, new_str)
+}
+
+rune starts_with(s: txt, prefix: txt) -> flag {
+    p_len := len(prefix)
+    if p_len == 0 {
+        ret true
+    }
+    s_len := len(s)
+    if s_len < p_len {
+        ret false
+    }
+    sub := substring(s, 0, p_len)
+    if sub == prefix {
+        ret true
+    }
+    ret false
+}
+
+rune ends_with(s: txt, suffix: txt) -> flag {
+    suf_len := len(suffix)
+    if suf_len == 0 {
+        ret true
+    }
+    s_len := len(s)
+    if s_len < suf_len {
+        ret false
+    }
+    sub := substring(s, s_len - suf_len, suf_len)
+    if sub == suffix {
+        ret true
+    }
+    ret false
+}
+
+rune repeat(s: txt, count: int) -> txt {
+    if count <= 0 {
+        ret ""
+    }
+    res := ""
+    i := 0
+    while i < count {
+        res := concat(res, s)
+        i := i + 1
+    }
+    ret res
+}
+
+rune pad_left(s: txt, target_len: int, pad_char: txt) -> txt {
+    curr_len := len(s)
+    if curr_len >= target_len {
+        ret s
+    }
+    diff := target_len - curr_len
+    pad := repeat(pad_char, diff)
+    ret concat(pad, s)
+}
+
+rune pad_right(s: txt, target_len: int, pad_char: txt) -> txt {
+    curr_len := len(s)
+    if curr_len >= target_len {
+        ret s
+    }
+    diff := target_len - curr_len
+    pad := repeat(pad_char, diff)
+    ret concat(s, pad)
 }

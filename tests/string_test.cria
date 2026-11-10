@@ -1,0 +1,66 @@
+// ============================================================================
+// CARIA ENTERPRISE TEST SUITE - STRING & TEXT SUITE (std.string)
+// ============================================================================
+
+summon std.string
+
+rune test_string_manipulation_basics() -> int {
+    raw := "  hello caria  "
+    trimmed := string.trim(raw)
+    if string.len(trimmed) != 11 {
+        say("✗ string.trim failed")
+        ret 1
+    }
+
+    lowered := string.lower("HELLO CARIA")
+    if string.contains(lowered, "hello") == false {
+        say("✗ string.lower failed")
+        ret 2
+    }
+
+    uppered := string.upper("caria")
+    if string.contains(uppered, "CARIA") == false {
+        say("✗ string.upper failed")
+        ret 3
+    }
+
+    ret 0
+}
+
+rune test_string_search_and_affixes() -> int {
+    text := "enterprise_kernel_service"
+
+    if string.starts_with(text, "enterprise") == false {
+        say("✗ string.starts_with failed")
+        ret 10
+    }
+
+    if string.ends_with(text, "service") == false {
+        say("✗ string.ends_with failed")
+        ret 11
+    }
+
+    idx := string.index_of(text, "kernel")
+    if idx < 0 {
+        say("✗ string.index_of failed")
+        ret 12
+    }
+
+    ret 0
+}
+
+rune test_string_padding_and_repeat() -> int {
+    rep := string.repeat("ab", 3)
+    if string.len(rep) != 6 {
+        say("✗ string.repeat failed")
+        ret 20
+    }
+
+    padded := string.pad_left("42", 5, "0")
+    if string.len(padded) != 5 {
+        say("✗ string.pad_left failed")
+        ret 21
+    }
+
+    ret 0
+}

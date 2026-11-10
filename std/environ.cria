@@ -1,0 +1,27 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - ENVIRONMENT MANAGEMENT (std.environ)
+// ============================================================================
+
+rune get(key: txt) -> txt {
+    ret env_get(key)
+}
+
+rune get_or(key: txt, default_val: txt) -> txt {
+    val := env_get(key)
+    if val == "" {
+        ret default_val
+    }
+    ret val
+}
+
+rune set(key: txt, val: txt) -> int {
+    ret env_set(key, val)
+}
+
+rune has(key: txt) -> flag {
+    val := env_get(key)
+    if val == "" {
+        ret false
+    }
+    ret true
+}

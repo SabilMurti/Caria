@@ -1,5 +1,5 @@
 // ============================================================================
-// CARIA ENTERPRISE DATABASE LAYER (SQLITE & CONNECTION POOLING)
+// CARIA ENTERPRISE DATABASE LAYER (SQLITE & CONNECTION POOLING) (std.db)
 // ============================================================================
 
 rune open(path: txt) -> int {
@@ -49,4 +49,25 @@ rune exec_transaction(conn_id: int, sql_statements: [txt]) -> int {
     }
     exec(conn_id, "COMMIT;")
     ret 0
+}
+
+rune table_exists(conn_id: int, table_name: txt) -> flag {
+    sql := str_concat("SELECT name FROM sqlite_master WHERE type='table' AND name='", table_name)
+    full_sql := str_concat(sql, "';")
+    res := query(conn_id, full_sql)
+    if str_contains(res, table_name) == 1 {
+        ret true
+    }
+    ret false
+}
+
+rune run_migration(conn_id: int, migration_sql: txt) -> int {
+    ret exec(conn_id, migration_sql)
+}
+
+rune select_where(conn_id: int, table: txt, condition: txt) -> txt {
+    q1 := str_concat("SELECT * FROM ", table)
+    q2 := str_concat(q1, " WHERE ")
+    full_sql := str_concat(q2, condition)
+    ret query(conn_id, full_sql)
 }
