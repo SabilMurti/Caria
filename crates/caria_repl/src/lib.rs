@@ -7,8 +7,8 @@ use caria_ir;
 use caria_memory;
 
 pub fn start_repl() {
-    println!("✨ Caria REPL v0.5.0 (Cranelift Native JIT)");
-    println!("Type 'exit' to quit. Functions defined with 'rune' persist.");
+    println!("✨ Caria REPL v0.6.0 (Cranelift Native JIT)");
+    println!("Type 'exit' to quit. Runes, models, and 'summon' statements persist.");
 
     let mut input = String::new();
     let mut buffer = String::new();
@@ -42,8 +42,9 @@ pub fn start_repl() {
         buffer.clear();
         if current_cmd.trim().is_empty() { continue; }
 
-        // If input starts with "rune " or "model ", add to persistent declarations
-        if current_cmd.trim().starts_with("rune") || current_cmd.trim().starts_with("model") {
+        // If input starts with "rune", "model", or "summon", add to persistent declarations
+        let trimmed = current_cmd.trim();
+        if trimmed.starts_with("rune") || trimmed.starts_with("model") || trimmed.starts_with("summon") {
             let lexer = CariaLexer::new(&current_cmd);
             let mut parser = Parser::new(lexer);
             match parser.parse_program() {
@@ -52,7 +53,11 @@ pub fn start_repl() {
                         Ok(_) => {
                             session_declarations.push_str(&current_cmd);
                             session_declarations.push('\n');
-                            println!("[Declared]");
+                            if trimmed.starts_with("summon") {
+                                println!("[Summoned]");
+                            } else {
+                                println!("[Declared]");
+                            }
                         }
                         Err(e) => println!("Type Error: {:?}", e),
                     }

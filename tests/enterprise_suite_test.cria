@@ -11,21 +11,21 @@ summon std.telemetry
 rune test_parameterized_database() -> int {
     conn := open(":memory:")
     exec(conn, "CREATE TABLE items (id INTEGER PRIMARY KEY, sku TEXT, qty INTEGER);")
-    
+
     // Parameterized insert
     inserted := exec_params(conn, "INSERT INTO items (sku, qty) VALUES (?, ?);", "[\"SKU-999\", 50]")
     if inserted != 1 {
         close(conn)
         ret 1
     }
-    
+
     // Parameterized select query
     results_json := query_params(conn, "SELECT id, sku, qty FROM items WHERE sku = ?;", "[\"SKU-999\"]")
     if results_json == "" {
         close(conn)
         ret 2
     }
-    
+
     close(conn)
     ret 0
 }
@@ -36,19 +36,19 @@ rune test_schema_validator() -> int {
     if v1 != 0 {
         ret 1
     }
-    
+
     // Invalid email
     v2 := validate_user("Bob", "invalid-email-address", 30)
     if v2 == 0 {
         ret 2
     }
-    
+
     // Underage
     v3 := validate_user("Bob", "bob@example.com", 14)
     if v3 == 0 {
         ret 3
     }
-    
+
     ret 0
 }
 
@@ -66,7 +66,7 @@ rune test_scoped_arena() -> int {
     if scope_depth < 1 {
         ret 1
     }
-    
+
     // Allocate temporary C string pointers through operations
     remaining := scope_exit(0)
     if remaining >= 0 {

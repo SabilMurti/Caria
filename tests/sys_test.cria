@@ -10,19 +10,19 @@ rune test_system_diagnostics() -> int {
         say("✗ sys.os() returned empty")
         ret 1
     }
-    
+
     arch_name := sys.arch()
     if len(arch_name) == 0 {
         say("✗ sys.arch() returned empty")
         ret 2
     }
-    
+
     cpus := sys.cpu_count()
     if cpus <= 0 {
         say("✗ sys.cpu_count() returned <= 0")
         ret 3
     }
-    
+
     cwd_path := sys.cwd()
     if len(cwd_path) == 0 {
         say("✗ sys.cwd() returned empty")

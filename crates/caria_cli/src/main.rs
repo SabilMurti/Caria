@@ -497,14 +497,51 @@ fn cmd_lsp() {
     std::process::exit(0);
 }
 
-fn cmd_fmt(file_path: &str) {
-    let source = fs::read_to_string(file_path).unwrap_or_else(|_| {
-        eprintln!("Error: Could not read file '{}'", file_path);
+fn cmd_fmt(target_path: &str) {
+    let target = Path::new(target_path);
+    if target.is_file() {
+        format_single_file(target);
+    } else if target.is_dir() {
+        let mut count = 0;
+        format_dir_recursive(target, &mut count);
+        println!("✨ Formatted {} files in '{}'", count, target_path);
+    } else {
+        eprintln!("Error: Path '{}' does not exist", target_path);
         std::process::exit(1);
-    });
+    }
+}
+
+fn format_single_file(path: &Path) {
+    let source = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: Could not read file '{:?}': {}", path, e);
+            return;
+        }
+    };
     let formatted = caria_formatter::format_code(&source);
-    fs::write(file_path, formatted).expect("Failed to write formatted code");
-    println!("Formatted: {}", file_path);
+    if let Err(e) = fs::write(path, formatted) {
+        eprintln!("Failed to write formatted code to '{:?}': {}", path, e);
+    } else {
+        println!("Formatted: {:?}", path);
+    }
+}
+
+fn format_dir_recursive(dir: &Path, count: &mut usize) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name != "target" && name != ".git" && name != ".amneshia" {
+                    format_dir_recursive(&p, count);
+                }
+            } else if p.is_file() && p.extension().map_or(false, |ext| ext == "cria") {
+                format_single_file(&p);
+                *count += 1;
+            }
+        }
+    }
 }
 
 fn cmd_repl() {
@@ -555,7 +592,7 @@ fn cmd_doc(file_path: &str) {
     println!("Generated docs: {}", out_html);
 }
 
-fn cmd_test(target_path: &str) {
+fn cmd_test(target_path: &str, filter: Option<&str>) {
     let mut test_files = Vec::new();
     let target = Path::new(target_path);
     if target.is_file() {
@@ -587,8 +624,12 @@ fn cmd_test(target_path: &str) {
         }
     }
 
+    if let Some(flt) = filter {
+        test_files.retain(|p| p.to_string_lossy().contains(flt));
+    }
+
     if test_files.is_empty() {
-        println!("No test files found in '{}'", target_path);
+        println!("No test files matching '{}' found in '{}'", filter.unwrap_or("*"), target_path);
         return;
     }
 
@@ -681,7 +722,7 @@ fn cmd_test(target_path: &str) {
     }
 }
 
-fn cmd_bench(target_path: &str, requested_iters: Option<u32>) {
+fn cmd_bench(target_path: &str, requested_iters: Option<u32>, filter: Option<&str>) {
     let mut files = Vec::new();
     let target = Path::new(target_path);
     if target.is_file() {
@@ -713,8 +754,12 @@ fn cmd_bench(target_path: &str, requested_iters: Option<u32>) {
         }
     }
 
+    if let Some(flt) = filter {
+        files.retain(|p| p.to_string_lossy().contains(flt));
+    }
+
     if files.is_empty() {
-        println!("No benchmark files found in '{}'", target_path);
+        println!("No benchmark files matching '{}' found in '{}'", filter.unwrap_or("*"), target_path);
         return;
     }
 
@@ -1064,37 +1109,50 @@ fn main() {
             cmd_dev(&target_file);
         }
         "fmt" => {
-            if args.len() < 3 {
-                eprintln!("Usage: caria fmt <file.cria>");
-                std::process::exit(1);
-            }
-            cmd_fmt(&args[2]);
-        }
-        "test" => {
             let target_path = if args.len() >= 3 {
                 args[2].clone()
             } else {
                 ".".to_string()
             };
-            cmd_test(&target_path);
+            cmd_fmt(&target_path);
         }
-        "bench" => {
-            let target_path = if args.len() >= 3 && !args[2].starts_with("--") {
-                args[2].clone()
-            } else {
-                ".".to_string()
-            };
-            let mut iters = None;
+        "test" => {
+            let mut target_path = ".".to_string();
+            let mut filter: Option<String> = None;
             let mut i = 2;
             while i < args.len() {
-                if args[i] == "--iters" && i + 1 < args.len() {
-                    iters = args[i+1].parse::<u32>().ok();
+                if (args[i] == "--filter" || args[i] == "-f") && i + 1 < args.len() {
+                    filter = Some(args[i + 1].clone());
                     i += 2;
+                } else if !args[i].starts_with('-') {
+                    target_path = args[i].clone();
+                    i += 1;
                 } else {
                     i += 1;
                 }
             }
-            cmd_bench(&target_path, iters);
+            cmd_test(&target_path, filter.as_deref());
+        }
+        "bench" => {
+            let mut target_path = ".".to_string();
+            let mut iters: Option<u32> = None;
+            let mut filter: Option<String> = None;
+            let mut i = 2;
+            while i < args.len() {
+                if (args[i] == "--iters" || args[i] == "-i") && i + 1 < args.len() {
+                    iters = args[i + 1].parse::<u32>().ok();
+                    i += 2;
+                } else if (args[i] == "--filter" || args[i] == "-f") && i + 1 < args.len() {
+                    filter = Some(args[i + 1].clone());
+                    i += 2;
+                } else if !args[i].starts_with('-') {
+                    target_path = args[i].clone();
+                    i += 1;
+                } else {
+                    i += 1;
+                }
+            }
+            cmd_bench(&target_path, iters, filter.as_deref());
         }
         "pkg" => {
             let sub_args: Vec<String> = if args.len() >= 3 {
