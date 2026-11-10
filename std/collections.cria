@@ -4,8 +4,9 @@
 
 rune range(start: int, stop: int) -> [int] {
     items := []
-    i := start
+    mut i := start
     while i < stop {
+        array_push(items, i)
         i = i + 1
     }
     ret items
@@ -18,4 +19,27 @@ rune contains_int(arr: [int], target: int) -> flag {
         }
     }
     ret false
+}
+
+rune sum(arr: [int]) -> int {
+    mut total := 0
+    for item in arr {
+        total = total + item
+    }
+    ret total
+}
+
+rune first(arr: [int]) -> int {
+    if arr.len > 0 {
+        ret arr[0]
+    }
+    ret 0
+}
+
+rune last(arr: [int]) -> int {
+    count := arr.len
+    if count > 0 {
+        ret arr[count - 1]
+    }
+    ret 0
 }

@@ -8,3 +8,15 @@ rune is_valid_json(payload: txt) -> flag {
     }
     ret true
 }
+
+rune parse(raw: txt) -> [txt:txt] {
+    ret json_parse(raw)
+}
+
+rune stringify(obj: [txt:txt]) -> txt {
+    ret json_stringify(obj)
+}
+
+rune get(json_str: txt, key: txt) -> txt {
+    ret json_get(json_str, key)
+}

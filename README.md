@@ -440,14 +440,34 @@ for item in [1, 2, 3] {
 
 ### Standard Library Auto-Loader
 
+Caria features a modular standard library (`std/`) compiled natively with zero overhead:
+
 ```caria
 summon std.math
+summon std.string
+summon std.io
+summon std.crypto
 
 rune main() -> int {
-    say(abs(-42))  // 42
+    say(clamp(150, 0, 100))                     // 100
+    say(concat("Hello, ", "Caria Native!"))     // Hello, Caria Native!
+    say(sha256("payload"))                      // 27158...
+    say.info("All modules linked successfully")
     ret 0
 }
 ```
+
+| Module | Description | Key Runes |
+| :--- | :--- | :--- |
+| `std.math` | Arithmetic, power, roots, clamp, random | `abs`, `min`, `max`, `clamp`, `pow`, `sqrt`, `random` |
+| `std.string` | Native string transformations & search | `concat`, `len`, `trim`, `lower`, `upper`, `contains`, `substring`, `replace` |
+| `std.json` | JSON serialization & fast extraction | `parse`, `stringify`, `get`, `is_valid_json` |
+| `std.collections` | Functional array & map utilities | `range`, `contains_int`, `sum`, `first`, `last` |
+| `std.io` | Filesystem, environment, timestamps & logs | `read_file`, `write_file`, `exists`, `get_env`, `set_env`, `now`, `sleep`, `log_info` |
+| `std.db` | Embedded high-speed SQLite engine | `open`, `close`, `exec`, `query` |
+| `std.net` | HTTP microserver & non-blocking client | `get`, `post`, `serve` |
+| `std.crypto` | SHA-256 and Base64 encoding | `sha256`, `encode_base64`, `decode_base64` |
+| `std.regex` | Regular expression matching & replacement | `test`, `replace` |
 
 ### AI-Agent Sandboxing & Gas Metering
 

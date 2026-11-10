@@ -1,0 +1,47 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY NATIVE TEST SUITE
+// ============================================================================
+// Run with: caria test tests/stdlib_suite_test.cria
+// ============================================================================
+
+summon std.math
+summon std.collections
+
+rune test_math_clamp() -> int {
+    val := clamp(45, 10, 50)
+    if val == 45 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_math_pow() -> int {
+    p := pow(2, 8)
+    if p == 256 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_collections_sum() -> int {
+    nums := [10, 20, 30, 40]
+    total := sum(nums)
+    if total == 100 {
+        ret 0
+    }
+    ret 1
+}
+
+rune test_collections_first_last() -> int {
+    nums := [5, 15, 25]
+    if first(nums) == 5 {
+        if last(nums) == 25 {
+            ret 0
+        }
+    }
+    ret 1
+}
+
+rune main() -> int {
+    ret 0
+}

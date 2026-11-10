@@ -2,17 +2,14 @@
 // CARIA STANDARD LIBRARY - NET & HTTP
 // ============================================================================
 
-rune http_get(url: txt) -> txt {
-    // Calls native FFI caria_http_get
-    ret ""
+rune get(url: txt) -> txt {
+    ret http_get(url)
 }
 
-rune http_post(url: txt, body: txt) -> txt {
-    // Calls native FFI caria_http_post
-    ret ""
+rune post(url: txt, body: txt) -> txt {
+    ret http_post(url, body)
 }
 
-rune http_serve(port: int, response_json: txt) -> int {
-    // Calls native FFI caria_http_listen_and_serve
-    ret 0
+rune serve(port: int, response_json: txt) -> int {
+    ret http_serve(port, response_json)
 }

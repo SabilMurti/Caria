@@ -1,0 +1,36 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY MASTER SHOWCASE
+// ============================================================================
+// Demonstrates pure native modules: math, string, json, io, crypto, collections
+// loaded via standard library auto-loader.
+// ============================================================================
+
+summon std.math
+summon std.string
+summon std.io
+summon std.crypto
+
+rune main() -> int {
+    say("⚡ Caria Standard Library Master Showcase")
+    
+    // 1. Math Module
+    clamped := clamp(150, 0, 100)
+    say("Clamped value (150 -> 0..100):")
+    say(clamped)
+    
+    // 2. String Module
+    greeting := concat("Hello, ", "World from Caria Native!")
+    say(greeting)
+    say("String length:")
+    say(len(greeting))
+    
+    // 3. Crypto Module
+    hash_result := sha256("caria-v0.5.0")
+    say("SHA-256 Digest:")
+    say(hash_result)
+    
+    // 4. Logging with Levels
+    log_info("All standard library modules linked and verified.")
+    
+    ret 0
+}

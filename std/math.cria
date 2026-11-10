@@ -37,11 +37,19 @@ rune pow(base: int, exp: int) -> int {
     if exp <= 0 {
         ret 1
     }
-    res := 1
-    i := 0
+    mut result := 1
+    mut i := 0
     while i < exp {
-        res = res * base
+        result = result * base
         i = i + 1
     }
-    ret res
+    ret result
+}
+
+rune sqrt(n: int) -> int {
+    ret math_sqrt(n)
+}
+
+rune random(low: int, high: int) -> int {
+    ret math_random(low, high)
 }

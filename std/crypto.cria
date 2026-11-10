@@ -1,0 +1,15 @@
+// ============================================================================
+// CARIA STANDARD LIBRARY - CRYPTO & ENCODING
+// ============================================================================
+
+rune sha256(data: txt) -> txt {
+    ret crypto_sha256(data)
+}
+
+rune encode_base64(data: txt) -> txt {
+    ret base64_encode(data)
+}
+
+rune decode_base64(encoded: txt) -> txt {
+    ret base64_decode(encoded)
+}

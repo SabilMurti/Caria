@@ -9,17 +9,38 @@ rune is_empty(s: txt) -> flag {
     ret false
 }
 
-rune starts_with(s: txt, prefix: txt) -> flag {
-    if s == prefix {
+rune concat(s1: txt, s2: txt) -> txt {
+    ret str_concat(s1, s2)
+}
+
+rune len(s: txt) -> int {
+    ret str_len(s)
+}
+
+rune trim(s: txt) -> txt {
+    ret str_trim(s)
+}
+
+rune lower(s: txt) -> txt {
+    ret str_lower(s)
+}
+
+rune upper(s: txt) -> txt {
+    ret str_upper(s)
+}
+
+rune contains(haystack: txt, needle: txt) -> flag {
+    idx := str_contains(haystack, needle)
+    if idx >= 0 {
         ret true
     }
     ret false
 }
 
-rune pad_left(s: txt, total_len: int, pad_char: txt) -> txt {
-    ret s
+rune substring(s: txt, start: int, length: int) -> txt {
+    ret str_substring(s, start, length)
 }
 
-rune pad_right(s: txt, total_len: int, pad_char: txt) -> txt {
-    ret s
+rune replace(s: txt, old_str: txt, new_str: txt) -> txt {
+    ret str_replace(s, old_str, new_str)
 }

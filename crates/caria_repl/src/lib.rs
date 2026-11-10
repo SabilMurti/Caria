@@ -81,14 +81,11 @@ pub fn start_repl() {
             Ok(prog) => {
                 match caria_semantic::analyze(&prog) {
                     Ok(_) => {
-                        let ir_builder = caria_ir::IrBuilder::new();
-                        if let Ok(mut ir_prog) = ir_builder.generate(&prog) {
-                            caria_ir::opt::optimize(&mut ir_prog);
-                            caria_memory::manage_ir();
-                            match caria_codegen_native::compile_to_native(&ir_prog) {
-                                Ok(_) => println!("[Executed]"),
-                                Err(e) => println!("Compilation Error: {}", e),
+                        match caria_codegen_native::NativeCompiler::compile_and_get_function(&prog, "main") {
+                            Ok(main_fn) => {
+                                let _code = main_fn();
                             }
+                            Err(e) => println!("Compilation Error: {}", e),
                         }
                     }
                     Err(e) => println!("Type Error: {:?}", e),

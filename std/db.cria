@@ -2,22 +2,18 @@
 // CARIA STANDARD LIBRARY - DATABASE (SQLITE)
 // ============================================================================
 
-rune db_open(path: txt) -> int {
-    // Calls native FFI caria_sqlite_open
-    ret 1
+rune open(path: txt) -> int {
+    ret db_open(path)
 }
 
-rune db_close(conn_id: int) -> int {
-    // Calls native FFI caria_sqlite_close
-    ret 0
+rune close(conn_id: int) -> int {
+    ret db_close(conn_id)
 }
 
-rune db_exec(conn_id: int, sql: txt) -> int {
-    // Calls native FFI caria_sqlite_exec
-    ret 0
+rune exec(conn_id: int, sql: txt) -> int {
+    ret db_exec(conn_id, sql)
 }
 
-rune db_query(conn_id: int, sql: txt) -> txt {
-    // Calls native FFI caria_sqlite_query, returns JSON array string
-    ret "[]"
+rune query(conn_id: int, sql: txt) -> txt {
+    ret db_query(conn_id, sql)
 }

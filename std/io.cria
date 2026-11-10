@@ -2,12 +2,54 @@
 // CARIA STANDARD LIBRARY - I/O & OS
 // ============================================================================
 
-rune log_info(msg: txt) -> int {
+rune read_file(path: txt) -> txt {
+    ret file_read(path)
+}
+
+rune write_file(path: txt, content: txt) -> int {
+    ret file_write(path, content)
+}
+
+rune exists(path: txt) -> flag {
+    ret file_exists(path)
+}
+
+rune get_env(key: txt) -> txt {
+    ret env_get(key)
+}
+
+rune set_env(key: txt, val: txt) -> int {
+    ret env_set(key, val)
+}
+
+rune now() -> int {
+    ret time_now()
+}
+
+rune now_millis() -> int {
+    ret time_now_millis()
+}
+
+rune sleep(ms: int) -> int {
+    ret sleep_millis(ms)
+}
+
+rune log(msg: txt) -> int {
     say(msg)
     ret 0
 }
 
+rune log_info(msg: txt) -> int {
+    say.info(msg)
+    ret 0
+}
+
+rune log_warn(msg: txt) -> int {
+    say.warn(msg)
+    ret 0
+}
+
 rune log_error(msg: txt) -> int {
-    say(msg)
+    say.error(msg)
     ret 1
 }

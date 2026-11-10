@@ -555,6 +555,13 @@ impl CariaCompiler {
             "gas_set" => "caria_gas_set",
             "gas_get" => "caria_gas_get",
             "gas_tick" => "caria_gas_tick",
+            // Crypto & Encoding
+            "sha256" | "crypto_sha256" => "caria_hash_make",
+            "base64_encode" => "caria_base64_encode",
+            "base64_decode" => "caria_base64_decode",
+            // Regex
+            "regex_test" => "caria_regex_test",
+            "regex_replace" => "caria_regex_replace",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",
@@ -936,8 +943,16 @@ impl CariaCompiler {
                 Ok(())
             }
             
-            caria_parser::ast::Statement::SayLevel { level: _, args: _ } => {
-                // For MVP, say.level statement is a no-op
+            caria_parser::ast::Statement::SayLevel { level, args } => {
+                let prefix = format!("[{}] ", level.to_uppercase());
+                let prefix_lit = caria_parser::ast::Literal::Str(prefix);
+                let prefix_val = self.compile_literal(&prefix_lit, ctx, builder)?;
+                let _ = self.call_named_function("caria_say_str", &[prefix_val], builder);
+
+                for arg in args {
+                    let val = self.compile_expression(arg, ctx, builder)?;
+                    let _ = self.call_named_function("caria_say", &[val], builder);
+                }
                 Ok(())
             }
             
