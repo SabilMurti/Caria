@@ -1,0 +1,39 @@
+summon std.yaml
+summon std.toml
+summon std.json
+summon std.test
+
+rune main() -> int {
+    say("=== Caria Enterprise YAML & TOML Engine Verification ===")
+
+    // 1. YAML Verification
+    yaml_input := "name: Caria Language\nversion: 0.6.0\nmode: enterprise\n"
+    json_from_yaml := yaml.parse_yaml(yaml_input)
+    say("YAML parsed to JSON: " + json_from_yaml)
+
+    val_name := json.get_field(json_from_yaml, "name")
+    val_mode := json.get_field(json_from_yaml, "mode")
+    test.assert_str_eq(val_name, "Caria Language", "YAML name field check")
+    test.assert_str_eq(val_mode, "enterprise", "YAML mode field check")
+
+    // Stringify back to YAML
+    yaml_out := yaml.stringify_yaml(json_from_yaml)
+    say("YAML serialized output:\n" + yaml_out)
+    test.assert_contains(yaml_out, "name: Caria Language", "YAML output contains name")
+
+    // 2. TOML Verification
+    toml_input := "title = \"Native Steel\"\nthreads = 8\nenabled = true\n"
+    json_from_toml := toml.parse_toml(toml_input)
+    say("TOML parsed to JSON: " + json_from_toml)
+
+    val_title := json.get_field(json_from_toml, "title")
+    test.assert_str_eq(val_title, "Native Steel", "TOML title field check")
+
+    // Stringify back to TOML
+    toml_out := toml.stringify_toml(json_from_toml)
+    say("TOML serialized output:\n" + toml_out)
+    test.assert_contains(toml_out, "title = \"Native Steel\"", "TOML output contains title")
+
+    say("[PASS] YAML & TOML serialization suites passed flawlessly!")
+    ret 0
+}

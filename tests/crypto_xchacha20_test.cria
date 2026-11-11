@@ -1,0 +1,28 @@
+summon std.crypto
+summon std.test
+
+rune main() -> int {
+    say("=== Caria Enterprise XChaCha20-Poly1305 AEAD Verification ===")
+
+    // 256-bit Key (64 hex characters)
+    key_hex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    plaintext := "Sovereign native microservice payload with XChaCha20-Poly1305"
+
+    // Encrypt
+    encrypted_hex := crypto.xchacha20_encrypt(key_hex, plaintext)
+    say("Ciphertext (Nonce + Payload + MAC): " + encrypted_hex)
+    test.assert_true(encrypted_hex != "", "Ciphertext must not be empty")
+
+    // Decrypt
+    decrypted := crypto.xchacha20_decrypt(key_hex, encrypted_hex)
+    say("Decrypted Plaintext: " + decrypted)
+    test.assert_str_eq(decrypted, plaintext, "Decrypted message must match original plaintext")
+
+    // Tamper detection: flip bytes in ciphertext
+    tampered_hex := "ffffffff" + encrypted_hex
+    tampered_decrypted := crypto.xchacha20_decrypt(key_hex, tampered_hex)
+    test.assert_str_eq(tampered_decrypted, "", "Tampered ciphertext authentication must fail")
+
+    say("[PASS] XChaCha20-Poly1305 AEAD verification passed cleanly!")
+    ret 0
+}

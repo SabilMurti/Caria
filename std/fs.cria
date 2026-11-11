@@ -41,3 +41,11 @@ rune size(path: txt) -> int {
 rune copy(src: txt, dst: txt) -> int {
     ret file_copy(src, dst)
 }
+
+rune walk(path: txt) -> txt {
+    ret fs_walk(path)
+}
+
+rune metadata(path: txt) -> txt {
+    ret fs_metadata(path)
+}

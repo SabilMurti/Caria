@@ -238,6 +238,12 @@ impl Scope {
             "udp_bind", "udp_local_addr", "udp_send_to", "udp_recv_from", "udp_set_timeout", "udp_close",
             // ANSI Terminal
             "term_is_atty", "term_color", "term_clear", "term_cursor_move",
+            // YAML & TOML
+            "yaml_parse", "yaml_stringify", "toml_parse", "toml_stringify",
+            // XChaCha20-Poly1305
+            "xchacha20_encrypt", "xchacha20_decrypt", "crypto_xchacha20_encrypt", "crypto_xchacha20_decrypt",
+            // Extended FS
+            "fs_walk", "fs_metadata",
         ];
         for b in builtins {
             self.symbols.insert(b.to_string(), (any_fn.clone(), false));
@@ -248,6 +254,7 @@ impl Scope {
             "crypto", "net", "db", "ws", "compress", "fs", "string", "regex", "json",
             "environ", "math", "collections", "time", "process", "sync", "task",
             "telemetry", "auth", "redis", "test", "log", "sys", "io", "schema", "udp", "term",
+            "yaml", "toml",
         ];
         for m in std_modules {
             self.symbols.insert(m.to_string(), (TypeInfo::Custom(format!("module:std.{}", m)), false));

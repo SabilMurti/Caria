@@ -400,6 +400,22 @@ impl CariaCompiler {
         // Core to_str
         add_symbol!("caria_to_str", caria_runtime::ffi_aot::caria_to_str);
 
+        // YAML Serialization
+        add_symbol!("caria_yaml_parse", caria_runtime::ffi_aot::caria_yaml_parse);
+        add_symbol!("caria_yaml_stringify", caria_runtime::ffi_aot::caria_yaml_stringify);
+
+        // TOML Serialization
+        add_symbol!("caria_toml_parse", caria_runtime::ffi_aot::caria_toml_parse);
+        add_symbol!("caria_toml_stringify", caria_runtime::ffi_aot::caria_toml_stringify);
+
+        // XChaCha20-Poly1305 AEAD
+        add_symbol!("caria_crypto_xchacha20_encrypt", caria_runtime::ffi_aot::caria_crypto_xchacha20_encrypt);
+        add_symbol!("caria_crypto_xchacha20_decrypt", caria_runtime::ffi_aot::caria_crypto_xchacha20_decrypt);
+
+        // Filesystem Walker & Metadata
+        add_symbol!("caria_fs_walk", caria_runtime::ffi_aot::caria_fs_walk);
+        add_symbol!("caria_fs_metadata", caria_runtime::ffi_aot::caria_fs_metadata);
+
         Ok(())
     }
 
@@ -868,6 +884,18 @@ impl CariaCompiler {
             "term_cursor_move" => "caria_term_cursor_move",
             // Type Conversion
             "str" | "to_str" => "caria_to_str",
+            // YAML
+            "yaml_parse" => "caria_yaml_parse",
+            "yaml_stringify" => "caria_yaml_stringify",
+            // TOML
+            "toml_parse" => "caria_toml_parse",
+            "toml_stringify" => "caria_toml_stringify",
+            // XChaCha20-Poly1305
+            "xchacha20_encrypt" | "crypto_xchacha20_encrypt" => "caria_crypto_xchacha20_encrypt",
+            "xchacha20_decrypt" | "crypto_xchacha20_decrypt" => "caria_crypto_xchacha20_decrypt",
+            // Extended Filesystem
+            "fs_walk" | "walk_dir" => "caria_fs_walk",
+            "fs_metadata" | "file_metadata" => "caria_fs_metadata",
             // Output
             "say" => "caria_say",
             "say_str" => "caria_say_str",

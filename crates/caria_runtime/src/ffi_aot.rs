@@ -16,6 +16,7 @@ use rusqlite::Connection;
 use parking_lot::Mutex;
 use lazy_static::lazy_static;
 use aes_gcm::{Aes256Gcm, Nonce};
+use chacha20poly1305::{XChaCha20Poly1305, aead::Aead, XNonce};
 use ed25519_dalek::{SigningKey, VerifyingKey, Signature, Signer, Verifier};
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -2703,4 +2704,173 @@ pub extern "C" fn caria_term_cursor_move(row: i64, col: i64) -> i64 {
 #[no_mangle]
 pub extern "C" fn caria_to_str(val: i64) -> *mut c_char {
     alloc_c_string(val.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// YAML Serialization & Parsing (std.yaml)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_yaml_parse(yaml_ptr: *const c_char) -> *mut c_char {
+    if yaml_ptr.is_null() {
+        return alloc_c_string("{}");
+    }
+    let yaml_str = unsafe { CStr::from_ptr(yaml_ptr) }.to_str().unwrap_or("");
+    match serde_yaml::from_str::<serde_json::Value>(yaml_str) {
+        Ok(v) => alloc_c_string(v.to_string()),
+        Err(e) => alloc_c_string(format!("{{\"error\":\"{}\"}}", e)),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_yaml_stringify(json_ptr: *const c_char) -> *mut c_char {
+    if json_ptr.is_null() {
+        return alloc_c_string("");
+    }
+    let json_str = unsafe { CStr::from_ptr(json_ptr) }.to_str().unwrap_or("{}");
+    match serde_json::from_str::<serde_json::Value>(json_str) {
+        Ok(v) => match serde_yaml::to_string(&v) {
+            Ok(y) => alloc_c_string(y),
+            Err(_) => alloc_c_string(""),
+        },
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TOML Serialization & Parsing (std.toml)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_toml_parse(toml_ptr: *const c_char) -> *mut c_char {
+    if toml_ptr.is_null() {
+        return alloc_c_string("{}");
+    }
+    let toml_str = unsafe { CStr::from_ptr(toml_ptr) }.to_str().unwrap_or("");
+    match toml::from_str::<serde_json::Value>(toml_str) {
+        Ok(v) => alloc_c_string(v.to_string()),
+        Err(e) => alloc_c_string(format!("{{\"error\":\"{}\"}}", e)),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_toml_stringify(json_ptr: *const c_char) -> *mut c_char {
+    if json_ptr.is_null() {
+        return alloc_c_string("");
+    }
+    let json_str = unsafe { CStr::from_ptr(json_ptr) }.to_str().unwrap_or("{}");
+    match serde_json::from_str::<serde_json::Value>(json_str) {
+        Ok(v) => match toml::to_string_pretty(&v) {
+            Ok(t) => alloc_c_string(t),
+            Err(_) => alloc_c_string(""),
+        },
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// XChaCha20-Poly1305 AEAD Cryptography (std.crypto)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_xchacha20_encrypt(key_hex_ptr: *const c_char, plaintext_ptr: *const c_char) -> *mut c_char {
+    use chacha20poly1305::KeyInit;
+    if key_hex_ptr.is_null() || plaintext_ptr.is_null() {
+        return alloc_c_string("");
+    }
+    let key_hex = unsafe { CStr::from_ptr(key_hex_ptr) }.to_str().unwrap_or("");
+    let plaintext = unsafe { CStr::from_ptr(plaintext_ptr) }.to_bytes();
+
+    let key = match hex::decode(key_hex) {
+        Ok(k) if k.len() == 32 => k,
+        _ => return alloc_c_string(""),
+    };
+
+    let cipher = match XChaCha20Poly1305::new_from_slice(&key) {
+        Ok(c) => c,
+        Err(_) => return alloc_c_string(""),
+    };
+
+    let mut nonce_bytes = [0u8; 24];
+    rand::thread_rng().fill(&mut nonce_bytes);
+    let nonce = XNonce::from_slice(&nonce_bytes);
+
+    match cipher.encrypt(nonce, plaintext) {
+        Ok(ciphertext) => {
+            let mut result = Vec::with_capacity(24 + ciphertext.len());
+            result.extend_from_slice(&nonce_bytes);
+            result.extend_from_slice(&ciphertext);
+            alloc_c_string(hex::encode(result))
+        }
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn caria_crypto_xchacha20_decrypt(key_hex_ptr: *const c_char, nonce_and_cipher_hex_ptr: *const c_char) -> *mut c_char {
+    use chacha20poly1305::KeyInit;
+    if key_hex_ptr.is_null() || nonce_and_cipher_hex_ptr.is_null() {
+        return alloc_c_string("");
+    }
+    let key_hex = unsafe { CStr::from_ptr(key_hex_ptr) }.to_str().unwrap_or("");
+    let payload_hex = unsafe { CStr::from_ptr(nonce_and_cipher_hex_ptr) }.to_str().unwrap_or("");
+
+    let key = match hex::decode(key_hex) {
+        Ok(k) if k.len() == 32 => k,
+        _ => return alloc_c_string(""),
+    };
+
+    let payload = match hex::decode(payload_hex) {
+        Ok(p) if p.len() >= 24 + 16 => p,
+        _ => return alloc_c_string(""),
+    };
+
+    let cipher = match XChaCha20Poly1305::new_from_slice(&key) {
+        Ok(c) => c,
+        Err(_) => return alloc_c_string(""),
+    };
+
+    let nonce = XNonce::from_slice(&payload[..24]);
+    match cipher.decrypt(nonce, &payload[24..]) {
+        Ok(pt) => alloc_c_string(String::from_utf8_lossy(&pt).to_string()),
+        Err(_) => alloc_c_string(""),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extended Filesystem Walker & Metadata (std.fs)
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn caria_fs_walk(dir_ptr: *const c_char) -> *mut c_char {
+    if dir_ptr.is_null() {
+        return alloc_c_string("[]");
+    }
+    let dir_str = unsafe { CStr::from_ptr(dir_ptr) }.to_str().unwrap_or(".");
+    let mut files: Vec<String> = Vec::new();
+    for entry in walkdir::WalkDir::new(dir_str).into_iter().filter_map(|e| e.ok()) {
+        files.push(entry.path().to_string_lossy().to_string());
+    }
+    let json = serde_json::json!(files);
+    alloc_c_string(json.to_string())
+}
+
+#[no_mangle]
+pub extern "C" fn caria_fs_metadata(path_ptr: *const c_char) -> *mut c_char {
+    if path_ptr.is_null() {
+        return alloc_c_string("{}");
+    }
+    let p_str = unsafe { CStr::from_ptr(path_ptr) }.to_str().unwrap_or("");
+    match std::fs::metadata(p_str) {
+        Ok(md) => {
+            let res = serde_json::json!({
+                "size": md.len(),
+                "is_file": md.is_file(),
+                "is_dir": md.is_dir(),
+                "readonly": md.permissions().readonly()
+            });
+            alloc_c_string(res.to_string())
+        }
+        Err(e) => alloc_c_string(format!("{{\"error\":\"{}\"}}", e)),
+    }
 }

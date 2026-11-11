@@ -63,3 +63,11 @@ rune ed25519_verify_signature(public_hex: txt, msg: txt, sig_hex: txt) -> flag {
     res := ed25519_verify(public_hex, msg, sig_hex)
     ret res == 1
 }
+
+rune xchacha20_encrypt(key_hex: txt, plaintext: txt) -> txt {
+    ret crypto_xchacha20_encrypt(key_hex, plaintext)
+}
+
+rune xchacha20_decrypt(key_hex: txt, payload: txt) -> txt {
+    ret crypto_xchacha20_decrypt(key_hex, payload)
+}

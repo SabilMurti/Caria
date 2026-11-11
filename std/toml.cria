@@ -1,0 +1,10 @@
+// Caria Enterprise Standard Library: std.toml
+// High-performance TOML parser and serializer
+
+rune parse_toml(toml_str: txt) -> txt {
+    ret toml_parse(toml_str)
+}
+
+rune stringify_toml(json_str: txt) -> txt {
+    ret toml_stringify(json_str)
+}

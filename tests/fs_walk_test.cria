@@ -1,0 +1,25 @@
+summon std.fs
+summon std.json
+summon std.test
+
+rune main() -> int {
+    say("=== Caria Enterprise Filesystem Walk & Metadata Verification ===")
+
+    // Walk std directory
+    files_json := fs.walk("std")
+    say("Files walked in 'std': " + files_json)
+    test.assert_contains(files_json, "std/fs.cria", "Walked files must include std/fs.cria")
+    test.assert_contains(files_json, "std/crypto.cria", "Walked files must include std/crypto.cria")
+
+    // File metadata
+    meta_json := fs.metadata("std/fs.cria")
+    say("File metadata: " + meta_json)
+    test.assert_contains(meta_json, "\"is_file\":true", "std/fs.cria is a file")
+
+    dir_meta := fs.metadata("std")
+    say("Directory metadata: " + dir_meta)
+    test.assert_contains(dir_meta, "\"is_dir\":true", "'std' is a directory")
+
+    say("[PASS] Filesystem walk and metadata suite passed cleanly!")
+    ret 0
+}

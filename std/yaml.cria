@@ -1,0 +1,10 @@
+// Caria Enterprise Standard Library: std.yaml
+// High-performance YAML parser and serializer
+
+rune parse_yaml(yaml_str: txt) -> txt {
+    ret yaml_parse(yaml_str)
+}
+
+rune stringify_yaml(json_str: txt) -> txt {
+    ret yaml_stringify(json_str)
+}
